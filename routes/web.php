@@ -5,6 +5,12 @@ use Illuminate\Support\Facades\Route;
 
 use Feeder\Core\Helpers\Test;
 
+// ------------------------- Main Routes ------------------------------
+Route::get('/main/dashboard', function () {
+    return view('pages.main.dashboard');
+});
+// --------------------------------------------------------------------
+
 Route::get('package-test', function () {
     return Test::hello();
 });
