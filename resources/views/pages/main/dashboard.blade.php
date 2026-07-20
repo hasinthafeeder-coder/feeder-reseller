@@ -43,9 +43,8 @@
             </div>
         </div>
 
-        {{-- Orders Overview --}}
+        {{-- Start Orders Overview --}}
         <div class="row">
-            {{-- Start Orders Overview --}}
             <div class="col-xxl-12 col-xxxxxl-12">
                 <div class="card bg-white p-40 rounded-10 border-0 mb-4 position-relative z-1 quick-view-bg"
                     style="padding-top: 29px;">
@@ -110,7 +109,7 @@
                                         </div>
                                         <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
                                             <div class="w-100 position-absolute top-50 translate-middle-y">
-                                                <i class="ri-shopping-cart-2-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                <i class="ri-check-double-line d-flex justify-content-center align-items-center fs-36 rounded-1"
                                                     style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
                                             </div>
                                         </div>
@@ -127,7 +126,7 @@
                                         </div>
                                         <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
                                             <div class="w-100 position-absolute top-50 translate-middle-y">
-                                                <i class="ri-printer-fill d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                <i class="ri-phone-line d-flex justify-content-center align-items-center fs-36 rounded-1"
                                                     style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
                                             </div>
                                         </div>
@@ -143,7 +142,7 @@
                                         </div>
                                         <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
                                             <div class="w-100 position-absolute top-50 translate-middle-y">
-                                                <i class="ri-archive-stack-fill d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                <i class="ri-phone-fill d-flex justify-content-center align-items-center fs-36 rounded-1"
                                                     style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
                                             </div>
                                         </div>
@@ -161,7 +160,7 @@
                                         </div>
                                         <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
                                             <div class="w-100 position-absolute top-50 translate-middle-y">
-                                                <i class="ri-truck-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                <i class="ri-close-circle-line d-flex justify-content-center align-items-center fs-36 rounded-1"
                                                     style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
                                             </div>
                                         </div>
@@ -177,6 +176,154 @@
                                         </div>
                                         <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
                                             <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-pause-circle-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #FDE5E0; background-color: #EF4923;"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{-- End Orders Overview --}}
+
+
+        {{-- Start Call Center Overview --}}
+        <div class="row">
+            <div class="col-xxl-12 col-xxxxxl-12">
+                <div class="card bg-white p-40 rounded-10 border-0 mb-4 position-relative z-1 quick-view-bg"
+                    style="padding-top: 29px;">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-20">
+                        <h3 class="text-white fs-26">Call Center Overview</h3>
+
+                        <div class="dropdown action-opt text-center">
+                            <button class="btn bg-transparent p-0" type="button" data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                                <i class="material-symbols-outlined fs-20 text-white">more_vert</i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end bg-white border-0 box-shadow">
+                                <li>
+                                    <a class="dropdown-item" href="javascript:;">
+                                        Last Day
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:;">
+                                        Last Week
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:;">
+                                        Last Month
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:;">
+                                        Last Year
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card bg-white rounded-10 border-0"
+                        style="box-shadow: 0px 0px 10px 3px rgba(195, 195, 195, 0.5);">
+                        <div class="row g-0">
+                            <div class="col-sm-4 col-xxl-4 col-xxxl-4 border-bottom border-end border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">Pending</h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">2554</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-time-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                class="col-sm-4 col-xxl-4 col-xxxl-4 border-bottom border-start border-end border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">Confirm</h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">5517</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-shopping-cart-2-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4 col-xxl-4 col-xxxl-4 border-bottom border-start border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">First Attempt
+                                            </h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">5466</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-printer-fill d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4 col-xxl-4 col-xxxl-4 border-top border-end border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">Second Attempt</h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">1533</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-archive-stack-fill d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                class="col-sm-4 col-xxl-4 col-xxxl-4 border-top border-end border-start border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">Cancel
+                                            </h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">212</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
+                                                <i class="ri-truck-line d-flex justify-content-center align-items-center fs-36 rounded-1"
+                                                    style="width: 70px; height: 70px; color: #EF4923; background-color: rgba(239, 73, 35, 0.14);"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4 col-xxl-4 col-xxxl-4 border-top border-start border-border-color-90">
+                                <div class="card bg-white p-40 rounded-10 border border-white mb-0 position-relative z-1">
+                                    <div class="d-flex">
+                                        <div class="flex-grow-1">
+                                            <h3 class="mb-10 lh-1 fs-14 text-body fw-medium">Hold</h3>
+                                            <h2 class="fs-26 fw-bold mb-10 lh-1">1533</h2>
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3 position-relative" style="width: 64px;">
+                                            <div class="w-100 position-absolute top-50 translate-middle-y">
                                                 <i class="ri-close-circle-line d-flex justify-content-center align-items-center fs-36 rounded-1"
                                                     style="width: 70px; height: 70px; color: #FDE5E0; background-color: #EF4923;"></i>
                                             </div>
@@ -188,8 +335,11 @@
                     </div>
                 </div>
             </div>
-            {{-- End Orders Overview --}}
+        </div>
+        {{-- End Call Center Overview --}}
 
+        {{-- Start Sales Chart and Stats --}}
+        <div class="row">
             <div class="col-lg-6">
                 <div class="card bg-white p-20 rounded-10 border border-white mb-4">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -228,7 +378,6 @@
 
             <div class="col-lg-6 col-xxl-3 col-xxxl-6">
                 <div class="row">
-
                     <div class="col-md-6 col-lg-12">
                         <div class="card bg-white p-20 rounded-10 border border-white mb-4">
                             <div class="d-flex">
@@ -287,6 +436,7 @@
                 </div>
             </div>
         </div>
+        {{-- End Sales Chart and Stats --}}
 
         {{-- Monthly Target Progress --}}
         <div class="row">
@@ -859,6 +1009,127 @@
                                         <td class="text-body">22</td>
                                         <td class="text-body">$65,973</td>
                                         <td class="text-body">85%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div
+                            class="d-flex justify-content-center justify-content-sm-between align-items-center text-center flex-wrap gap-2 showing-wrap pt-15">
+                            <span class="fs-15">Showing 1 to 5 of 50 entries</span>
+
+                            <nav class="custom-pagination" aria-label="Page navigation example">
+                                <ul class="pagination mb-0 justify-content-center">
+                                    <li class="page-item">
+                                        <button class="page-link icon" aria-label="Previous">
+                                            <i class="material-symbols-outlined">west</i>
+                                        </button>
+                                    </li>
+                                    <li class="page-item">
+                                        <button class="page-link active">1</button>
+                                    </li>
+                                    <li class="page-item">
+                                        <button class="page-link">2</button>
+                                    </li>
+                                    <li class="page-item">
+                                        <button class="page-link">3</button>
+                                    </li>
+                                    <li class="page-item">
+                                        <button class="page-link icon" aria-label="Next">
+                                            <i class="material-symbols-outlined">east</i>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xxl-6 col-xxxl-12">
+                <div class="card bg-white p-20 rounded-10 border border-white mb-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap flex-md-nowrap gap-3 mb-20">
+                        <h3 class="text-nowrap">Call Centers</h3>
+
+                        <div class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center gap-2 justify-content-start justify-content-md-end top-products-filter-controls"
+                            style="width: 100%; flex: 1 1 auto;">
+                            <form class="table-src-form position-relative">
+
+                            </form>
+                            <input type="text" class="form-control form-control-sm"
+                                placeholder="Search call centers..." />
+                            <input type="date" class="form-control form-control-sm"
+                                aria-label="Call centers start date" style="min-width: 140px;" />
+                            <input type="date" class="form-control form-control-sm" aria-label="Call centers end date"
+                                style="min-width: 140px;" />
+                            <button type="button" class="btn btn-primary text-white btn-sm top-products-filter-btn"
+                                style="min-width: 88px;">Filter</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm top-products-reset-btn"
+                                style="min-width: 88px;">Reset</button>
+                        </div>
+                    </div>
+
+                    <div class="default-table-area without-header table-top-selling-products">
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="fw-medium text-nowrap">Name</th>
+                                        <th scope="col" class="fw-medium text-nowrap">Pending</th>
+                                        <th scope="col" class="fw-medium text-nowrap">1st Attempt</th>
+                                        <th scope="col" class="fw-medium text-nowrap">2nd Attempt</th>
+                                        <th scope="col" class="fw-medium text-nowrap">3rd Attempt</th>
+                                        <th scope="col" class="fw-medium text-nowrap">Confirmed</th>
+                                        <th scope="col" class="fw-medium text-nowrap">Success Rate</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="text-body fw-medium">Casablanca Team</td>
+                                        <td class="text-body">142</td>
+                                        <td class="text-body">318</td>
+                                        <td class="text-body">108</td>
+                                        <td class="text-body">37</td>
+                                        <td class="text-body">401</td>
+                                        <td class="text-body">84%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-body fw-medium">Rabat Team</td>
+                                        <td class="text-body">119</td>
+                                        <td class="text-body">287</td>
+                                        <td class="text-body">96</td>
+                                        <td class="text-body">28</td>
+                                        <td class="text-body">365</td>
+                                        <td class="text-body">82%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-body fw-medium">Marrakech Team</td>
+                                        <td class="text-body">101</td>
+                                        <td class="text-body">264</td>
+                                        <td class="text-body">88</td>
+                                        <td class="text-body">26</td>
+                                        <td class="text-body">338</td>
+                                        <td class="text-body">81%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-body fw-medium">Tangier Team</td>
+                                        <td class="text-body">87</td>
+                                        <td class="text-body">233</td>
+                                        <td class="text-body">77</td>
+                                        <td class="text-body">21</td>
+                                        <td class="text-body">301</td>
+                                        <td class="text-body">80%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-body fw-medium">Agadir Team</td>
+                                        <td class="text-body">75</td>
+                                        <td class="text-body">205</td>
+                                        <td class="text-body">69</td>
+                                        <td class="text-body">18</td>
+                                        <td class="text-body">269</td>
+                                        <td class="text-body">79%</td>
                                     </tr>
                                 </tbody>
                             </table>
