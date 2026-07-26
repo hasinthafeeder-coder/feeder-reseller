@@ -376,9 +376,9 @@
                 </div>
             </div>
 
-            <div class="col-lg-6 col-xxl-3 col-xxxl-6">
+            <div class="col-lg-6 col-xxl-6 col-xxxl-6">
                 <div class="row">
-                    <div class="col-md-6 col-lg-12">
+                    <div class="col-md-6  col-lg-12">
                         <div class="card bg-white p-20 rounded-10 border border-white mb-4">
                             <div class="d-flex">
                                 <div class="flex-grow-1">
@@ -810,7 +810,7 @@
         {{-- End My team card --}}
 
         <div class="row">
-            <div class="col-xxl-6 col-xxxl-12">
+            <div class="col-xxl-12 col-xxxl-12">
                 <div class="card bg-white p-20 rounded-10 border border-white mb-4">
                     <div class="d-flex justify-content-between align-items-center flex-wrap flex-md-nowrap gap-3 mb-20">
                         <h3 class="text-nowrap">Top Selling Products</h3>
@@ -1048,7 +1048,7 @@
         </div>
 
         <div class="row">
-            <div class="col-xxl-6 col-xxxl-12">
+            <div class="col-xxl-12 col-xxxl-12">
                 <div class="card bg-white p-20 rounded-10 border border-white mb-4">
                     <div class="d-flex justify-content-between align-items-center flex-wrap flex-md-nowrap gap-3 mb-20">
                         <h3 class="text-nowrap">Call Centers</h3>
@@ -1169,7 +1169,7 @@
         </div>
 
         <div class="row">
-            <div class="col-xxl-8 col-xxxxl-12">
+            <div class="col-xxl-12 col-xxxxl-12">
                 <div class="card bg-white rounded-10 border border-white mb-4">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 p-20">
                         <h3>Couriers</h3>

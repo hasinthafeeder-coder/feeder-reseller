@@ -509,11 +509,11 @@
         },
         {
             "name": "feeder/core",
-            "version": "dev-main",
+            "version": "dev-file-server-setup-1",
             "dist": {
                 "type": "path",
                 "url": "../feeder-core",
-                "reference": "f9b248aff10958080d3019056b3e76da6e8d3172"
+                "reference": "e58be8d748f353891d4fa431304a3bd014668ce6"
             },
             "require": {
                 "illuminate/database": "^13.0",

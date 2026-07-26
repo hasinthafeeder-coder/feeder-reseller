@@ -11,6 +11,16 @@ Route::get('/main/dashboard', function () {
 });
 // --------------------------------------------------------------------
 
+// ------------------------- Auth Routes ------------------------------
+// Route::get('/auth/login', function () {
+//     return view('pages.auth.login');
+// });
+
+Route::get('/auth/register', function () {
+    return view('pages.auth.register');
+});
+// --------------------------------------------------------------------
+
 Route::get('package-test', function () {
     return Test::hello();
 });
