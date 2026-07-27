@@ -15,4 +15,7 @@ Route::middleware('guest')->group(function () {
 
     Route::post('/auth/register/user', [RegistrationController::class, 'registerUser'])
         ->name('reseller.registration.user');
+
+    Route::post('/auth/register/personal', [RegistrationController::class, 'personalDetails'])
+        ->name('reseller.registration.personal');
 });

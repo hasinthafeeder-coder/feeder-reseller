@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Registration\SubmitRegistrationRequest;
 use App\Http\Requests\Registration\VerifyOtpRequest;
 use App\Http\Requests\Registration\VerifyPhoneRequest;
+use App\Http\Requests\Registration\SavePersonalDetailsRequest;
+use App\Http\Requests\Registration\SubmitPersonalDetailsRequest;
+use App\Services\Registration\PersonalDetailsService;
 use App\Services\Registration\RegistrationOtpService;
 use App\Services\Registration\RegistrationService;
 use Illuminate\Http\JsonResponse;
@@ -17,8 +20,8 @@ class RegistrationController extends Controller
     public function __construct(
         private readonly RegistrationOtpService $registrationOtpService,
         private readonly RegistrationService $registrationService,
-    ) {
-    }
+        private readonly PersonalDetailsService $personalDetailsService,
+    ) {}
 
     public function create(): View
     {
@@ -77,5 +80,24 @@ class RegistrationController extends Controller
                 'status' => $user->status,
             ],
         ], 201);
+    }
+
+    public function personalDetails(
+        SubmitPersonalDetailsRequest $request
+    ): JsonResponse {
+        return response()->json([
+            'message' => 'Personal details endpoint is ready.',
+        ]);
+    }
+
+    public function savePersonalDetails(SavePersonalDetailsRequest $request): JsonResponse
+    {
+        $this->personalDetailsService->save(
+            $request->validated()
+        );
+
+        return response()->json([
+            'message' => 'Personal details saved successfully.',
+        ]);
     }
 }

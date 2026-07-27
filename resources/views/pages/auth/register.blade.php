@@ -461,8 +461,9 @@
                             </li>
                             <li class="nav-item wizard-step" role="presentation">
                                 <button class="nav-link p-0 d-flex align-items-center" id="step3-tab"
-                                    data-bs-toggle="tab" data-bs-target="#step3-tab-pane" type="button" role="tab"
-                                    aria-controls="step3-tab-pane" aria-selected="false" data-step-index="3">
+                                    data-bs-toggle="tab" data-bs-target="#step3-tab-pane" type="button"
+                                    role="tab" aria-controls="step3-tab-pane" aria-selected="false"
+                                    data-step-index="3">
                                     <span
                                         class="fs-20 fw-bold text-primary wh-48 bg-primary bg-opacity-10 rounded-circle d-inline-block step-number">3</span>
                                     <div class="text-start ms-3">
@@ -579,7 +580,7 @@
                                                         <label class="label fs-16">First Name *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-user-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="firstName" name="first_name" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 placeholder="Enter first name">
                                                         </div>
@@ -590,7 +591,7 @@
                                                         <label class="label fs-16">Last Name *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-user-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="lastName" name="last_name" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 placeholder="Enter last name">
                                                         </div>
@@ -601,7 +602,7 @@
                                                         <label class="label fs-16">Resident Address *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-map-pin-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="address" name="address" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 placeholder="Enter resident address">
                                                         </div>
@@ -612,7 +613,7 @@
                                                         <label class="label fs-16">NIC No *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-id-card-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="nic" name="nic" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 placeholder="Enter NIC number">
                                                         </div>
@@ -623,7 +624,8 @@
                                                         <label class="label fs-16">Personal Contact No *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-phone-line input-icon"></i>
-                                                            <input type="tel"
+                                                            <input id="personalPhone" name="personal_phone"
+                                                                type="tel" readonly
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 placeholder="Enter personal contact number">
                                                         </div>
@@ -912,6 +914,7 @@
     <script src="{{ asset('assets/js/custom/echarts.js') }}"></script>
     <script src="{{ asset('assets/js/custom/maps.js') }}"></script>
     <script src="{{ asset('assets/js/custom/custom.js') }}"></script>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const themeToggleButton = document.getElementById('switch-toggle');
@@ -944,10 +947,16 @@
             const companyLogoInput = document.getElementById('companyLogoInput');
             const companyLogoPreview = document.getElementById('companyLogoPreview');
             const companyLogoUploadBox = document.getElementById('companyLogoUploadBox');
+            const firstName = document.getElementById('firstName');
+            const lastName = document.getElementById('lastName');
+            const address = document.getElementById('address');
+            const nic = document.getElementById('nic');
+            const personalPhone = document.getElementById('personalPhone');
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
             let otpVerified = false;
             let userRegistered = false;
+            let registeringUserUuid = null;
 
             function syncThemeIcon() {
                 if (!themeToggleButton || !authThemeIcon) {
@@ -1037,15 +1046,14 @@
                 return 'Request failed. Please try again.';
             }
 
-            async function postRegistration(url, payload) {
+            async function postRegistrationForm(url, formData) {
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify(payload),
+                    body: formData,
                 });
 
                 const data = await response.json().catch(() => ({}));
@@ -1120,9 +1128,10 @@
                 userRegistered = false;
 
                 try {
-                    const response = await postRegistration('{{ route('reseller.registration.send-otp') }}', {
-                        phone: contactNumber.value,
-                    });
+                    const response = await postRegistration(
+                        '{{ route('reseller.registration.send-otp') }}', {
+                            phone: contactNumber.value,
+                        });
 
                     otpStep.classList.add('is-visible');
                     submitOtpBtn.classList.add('is-visible');
@@ -1177,12 +1186,15 @@
                     activateStep2Btn.disabled = true;
 
                     try {
-                        await postRegistration('{{ route('reseller.registration.user') }}', {
-                            phone: contactNumber.value,
-                            password: passwordInput.value,
-                            password_confirmation: verifyPasswordInput.value,
-                        });
+                        const response = await postRegistration(
+                            '{{ route('reseller.registration.user') }}', {
+                                phone: contactNumber.value,
+                                password: passwordInput.value,
+                                password_confirmation: verifyPasswordInput.value,
+                            }
+                        );
 
+                        registeringUserUuid = response.user.uuid;
                         userRegistered = true;
                     } catch (error) {
                         alert(error.message);
