@@ -3,26 +3,8 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
-use Feeder\Core\Helpers\Test;
-
-// ------------------------- Main Routes ------------------------------
 Route::get('/main/dashboard', function () {
     return view('pages.main.dashboard');
-});
-// --------------------------------------------------------------------
-
-// ------------------------- Auth Routes ------------------------------
-// Route::get('/auth/login', function () {
-//     return view('pages.auth.login');
-// });
-
-Route::get('/auth/register', function () {
-    return view('pages.auth.register');
-});
-// --------------------------------------------------------------------
-
-Route::get('package-test', function () {
-    return Test::hello();
 });
 
 Route::get('/test', function () {
@@ -43,4 +25,5 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+require __DIR__ . '/registration.php';
 require __DIR__ . '/auth.php';

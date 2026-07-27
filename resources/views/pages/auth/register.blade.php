@@ -5,6 +5,7 @@
     <!-- Required meta tags -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- Links Of CSS File -->
     <link rel="stylesheet" href="{{ asset('assets/css/sidebar-menu.css') }} ">
@@ -943,6 +944,10 @@
             const companyLogoInput = document.getElementById('companyLogoInput');
             const companyLogoPreview = document.getElementById('companyLogoPreview');
             const companyLogoUploadBox = document.getElementById('companyLogoUploadBox');
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            let otpVerified = false;
+            let userRegistered = false;
 
             function syncThemeIcon() {
                 if (!themeToggleButton || !authThemeIcon) {
@@ -1015,6 +1020,43 @@
                 syncContainerHeight();
             }
 
+            function extractErrorMessage(payload) {
+                if (payload && typeof payload.message === 'string' && payload.message.length > 0) {
+                    return payload.message;
+                }
+
+                if (payload && payload.errors && typeof payload.errors === 'object') {
+                    const firstField = Object.keys(payload.errors)[0];
+                    const firstFieldErrors = payload.errors[firstField];
+
+                    if (Array.isArray(firstFieldErrors) && firstFieldErrors.length > 0) {
+                        return firstFieldErrors[0];
+                    }
+                }
+
+                return 'Request failed. Please try again.';
+            }
+
+            async function postRegistration(url, payload) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(extractErrorMessage(data));
+                }
+
+                return data;
+            }
+
             function updateStepOneControls() {
                 const contactValid = /^\d{10}$/.test(contactNumber.value);
                 const otpVisible = otpStep.classList.contains('is-visible');
@@ -1022,9 +1064,9 @@
 
                 sendOtpBtn.disabled = !contactValid;
                 submitOtpBtn.disabled = !(/^[0-9]{4,6}$/.test(otpCode.value));
-                activateStep2Btn.disabled = !(contactValid && otpVisible && passwordVisible && passwordInput.value
-                    .length > 0 && verifyPasswordInput.value.length > 0 && passwordInput.value ===
-                    verifyPasswordInput.value);
+                activateStep2Btn.disabled = !(contactValid && otpVisible && passwordVisible && otpVerified &&
+                    passwordInput.value.length > 0 && verifyPasswordInput.value.length > 0 &&
+                    passwordInput.value === verifyPasswordInput.value);
             }
 
             function updatePreview(input, preview, box) {
@@ -1052,6 +1094,8 @@
 
             contactNumber.addEventListener('input', function() {
                 contactNumber.value = contactNumber.value.replace(/\D/g, '').slice(0, 10);
+                otpVerified = false;
+                userRegistered = false;
                 updateStepOneControls();
             });
 
@@ -1064,38 +1108,87 @@
                 field.addEventListener('input', updateStepOneControls);
             });
 
-            sendOtpBtn.addEventListener('click', function() {
+            sendOtpBtn.addEventListener('click', async function() {
                 const contactValid = /^\d{10}$/.test(contactNumber.value);
                 if (!contactValid) {
                     contactNumber.focus();
                     return;
                 }
 
-                otpStep.classList.add('is-visible');
-                submitOtpBtn.classList.add('is-visible');
-                sendOtpBtn.textContent = 'Resend OTP';
-                updateStepOneControls();
+                sendOtpBtn.disabled = true;
+                otpVerified = false;
+                userRegistered = false;
+
+                try {
+                    const response = await postRegistration('{{ route('reseller.registration.send-otp') }}', {
+                        phone: contactNumber.value,
+                    });
+
+                    otpStep.classList.add('is-visible');
+                    submitOtpBtn.classList.add('is-visible');
+                    sendOtpBtn.textContent = 'Resend OTP';
+
+                    if (response.otp) {
+                        alert('Development OTP: ' + response.otp);
+                    }
+                } catch (error) {
+                    alert(error.message);
+                } finally {
+                    updateStepOneControls();
+                }
             });
 
-            submitOtpBtn.addEventListener('click', function() {
+            submitOtpBtn.addEventListener('click', async function() {
                 if (!/^[0-9]{4,6}$/.test(otpCode.value)) {
                     otpCode.focus();
                     return;
                 }
 
-                contactNumber.disabled = true;
-                otpCode.disabled = true;
-                sendOtpBtn.classList.add('d-none');
-                submitOtpBtn.classList.add('d-none');
-                passwordStep.classList.add('is-visible');
-                verifyPasswordStep.classList.add('is-visible');
-                activateStep2Btn.classList.add('is-visible');
-                updateStepOneControls();
+                submitOtpBtn.disabled = true;
+
+                try {
+                    await postRegistration('{{ route('reseller.registration.verify-otp') }}', {
+                        phone: contactNumber.value,
+                        otp: otpCode.value,
+                    });
+
+                    otpVerified = true;
+                    contactNumber.disabled = true;
+                    otpCode.disabled = true;
+                    sendOtpBtn.classList.add('d-none');
+                    submitOtpBtn.classList.add('d-none');
+                    passwordStep.classList.add('is-visible');
+                    verifyPasswordStep.classList.add('is-visible');
+                    activateStep2Btn.classList.add('is-visible');
+                } catch (error) {
+                    otpVerified = false;
+                    alert(error.message);
+                } finally {
+                    updateStepOneControls();
+                }
             });
 
-            activateStep2Btn.addEventListener('click', function() {
+            activateStep2Btn.addEventListener('click', async function() {
                 if (activateStep2Btn.disabled) {
                     return;
+                }
+
+                if (!userRegistered) {
+                    activateStep2Btn.disabled = true;
+
+                    try {
+                        await postRegistration('{{ route('reseller.registration.user') }}', {
+                            phone: contactNumber.value,
+                            password: passwordInput.value,
+                            password_confirmation: verifyPasswordInput.value,
+                        });
+
+                        userRegistered = true;
+                    } catch (error) {
+                        alert(error.message);
+                        updateStepOneControls();
+                        return;
+                    }
                 }
 
                 bootstrap.Tab.getOrCreateInstance(document.getElementById('step2-tab')).show();

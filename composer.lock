@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "54fb49aa8169ec735b40e43c93c92226",
+    "content-hash": "ca06c01569c7b4a471e8d89d34302181",
     "packages": [
         {
             "name": "brick/math",
@@ -509,11 +509,11 @@
         },
         {
             "name": "feeder/core",
-            "version": "dev-file-server-setup-1",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "../feeder-core",
-                "reference": "e58be8d748f353891d4fa431304a3bd014668ce6"
+                "reference": "5f4f901acb72cb482f555772740931fcf5a07084"
             },
             "require": {
                 "illuminate/database": "^13.0",
@@ -524,7 +524,7 @@
             "extra": {
                 "laravel": {
                     "providers": [
-                        "Feeder\\Core\\Providers\\CoreServiceProvider"
+                        "Feeder\\Core\\Providers\\FeederCoreServiceProvider"
                     ]
                 }
             },
@@ -538,6 +538,7 @@
             ],
             "description": "Shared business logic for the Feeder Dropshipping Platform",
             "transport-options": {
+                "symlink": true,
                 "relative": true
             }
         },

@@ -10,8 +10,11 @@
     "license": "MIT",
     "repositories": [
         {
-            "type": "vcs",
-            "url": "https://github.com/hasinthafeeder-coder/feeder-core.git"
+            "type": "path",
+            "url": "../feeder-core",
+            "options": {
+                "symlink": true
+            }
         }
     ],
     "require": {
