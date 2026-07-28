@@ -114,6 +114,31 @@
             padding: 0;
         }
 
+        .field-error {
+            display: none;
+            margin-top: 8px;
+            color: #dc3545;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .field-error.is-visible {
+            display: block;
+        }
+
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 .2rem rgba(220, 53, 69, 0.12);
+        }
+
+        .step-one-alert {
+            display: none;
+        }
+
+        .step-one-alert.is-visible {
+            display: block;
+        }
+
         .upload-square {
             position: relative;
             border: 1px dashed rgba(239, 73, 35, 0.25);
@@ -182,8 +207,30 @@
             background: linear-gradient(180deg, rgba(17, 24, 39, 0.04), rgba(17, 24, 39, 0));
         }
 
-        .upload-empty-state {
-            min-height: 100%;
+        .upload-square.has-saved-photo .upload-empty-state {
+            opacity: 0.35;
+        }
+
+        .upload-saved-label {
+            display: none;
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(239, 73, 35, 0.12);
+            color: #EF4923;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 999px;
+            z-index: 2;
+        }
+
+        .upload-square.has-saved-photo .upload-saved-label {
+            display: block;
+        }
+
+        min-height: 100%;
         }
 
         .btn-primary {
@@ -493,17 +540,20 @@
                                 <h4 class="fs-18 fw-semibold mb-1">Personal Details</h4>
                                 <p class="text-gray-light mb-4">Fields marked with * are required.</p>
                                 <form id="register-step-1-form">
+                                    <div id="stepOneAlert" class="alert alert-warning step-one-alert mb-4"
+                                        role="alert"></div>
                                     <div class="row">
                                         <div class="col-lg-12">
                                             <div class="form-group mb-4">
                                                 <label class="label fs-16">Contact Number *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-phone-line input-icon"></i>
-                                                    <input id="contactNumber" type="text"
+                                                    <input id="contactNumber" name="phone" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter 10 digit contact number" maxlength="10"
                                                         inputmode="numeric" autocomplete="tel">
                                                 </div>
+                                                <div id="contactNumberError" class="field-error"></div>
                                             </div>
                                         </div>
                                         <div class="col-lg-12 otp-step" id="otpStep">
@@ -511,10 +561,11 @@
                                                 <label class="label fs-16">Enter OTP *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-key-2-line input-icon"></i>
-                                                    <input id="otpCode" type="password"
+                                                    <input id="otpCode" name="otp" type="password"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter OTP" maxlength="6" inputmode="numeric">
                                                 </div>
+                                                <div id="otpCodeError" class="field-error"></div>
                                             </div>
                                         </div>
                                         <div class="col-lg-6 password-step" id="passwordStep">
@@ -522,7 +573,7 @@
                                                 <label class="label fs-16">Password *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-lock-password-line input-icon"></i>
-                                                    <input id="passwordInput" type="password"
+                                                    <input id="passwordInput" name="password" type="password"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Create password">
                                                     <button type="button" class="password-toggle-btn"
@@ -531,6 +582,7 @@
                                                         <i class="ri-eye-off-line"></i>
                                                     </button>
                                                 </div>
+                                                <div id="passwordInputError" class="field-error"></div>
                                             </div>
                                         </div>
                                         <div class="col-lg-6 password-step" id="verifyPasswordStep">
@@ -538,7 +590,8 @@
                                                 <label class="label fs-16">Verify Password *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-shield-keyhole-line input-icon"></i>
-                                                    <input id="verifyPasswordInput" type="password"
+                                                    <input id="verifyPasswordInput" name="password_confirmation"
+                                                        type="password"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Re-enter password">
                                                     <button type="button" class="password-toggle-btn"
@@ -547,6 +600,7 @@
                                                         <i class="ri-eye-off-line"></i>
                                                     </button>
                                                 </div>
+                                                <div id="verifyPasswordInputError" class="field-error"></div>
                                             </div>
                                         </div>
                                         <div class="col-lg-12">
@@ -582,8 +636,10 @@
                                                             <i class="ri-user-line input-icon"></i>
                                                             <input id="firstName" name="first_name" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter first name">
+                                                                placeholder="Enter first name" maxlength="100"
+                                                                autocomplete="given-name">
                                                         </div>
+                                                        <div id="firstNameError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -593,8 +649,10 @@
                                                             <i class="ri-user-line input-icon"></i>
                                                             <input id="lastName" name="last_name" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter last name">
+                                                                placeholder="Enter last name" maxlength="100"
+                                                                autocomplete="family-name">
                                                         </div>
+                                                        <div id="lastNameError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -604,8 +662,10 @@
                                                             <i class="ri-map-pin-line input-icon"></i>
                                                             <input id="address" name="address" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter resident address">
+                                                                placeholder="Enter resident address" maxlength="500"
+                                                                autocomplete="street-address">
                                                         </div>
+                                                        <div id="addressError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -615,8 +675,10 @@
                                                             <i class="ri-id-card-line input-icon"></i>
                                                             <input id="nic" name="nic" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter NIC number">
+                                                                placeholder="Enter NIC number" maxlength="12"
+                                                                autocomplete="off">
                                                         </div>
+                                                        <div id="nicError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -646,8 +708,8 @@
                                                                 <div class="upload-chip">
                                                                     <i class="ri-upload-2-line"></i>
                                                                     <span>Upload image</span>
-                                                                    <input id="personalImageInput" type="file"
-                                                                        accept="image/*">
+                                                                    <input id="personalImageInput" name="profile_photo"
+                                                                        type="file" accept="image/jpeg,image/png,image/webp">
                                                                 </div>
                                                             </div>
                                                             <div
@@ -660,7 +722,9 @@
                                                                     appears
                                                                     instantly after upload</p>
                                                             </div>
+                                                            <span class="upload-saved-label">Photo saved</span>
                                                         </div>
+                                                        <div id="personalImageInputError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -672,10 +736,8 @@
                                                     class="btn btn-primary bg-primary bg-opacity-10 text-primary py-3 px-5 fw-semibold border-0"
                                                     data-bs-toggle="tab"
                                                     data-bs-target="#step1-tab-pane">Back</button>
-                                                <button type="button"
-                                                    class="btn btn-primary py-3 px-5 fw-semibold text-white"
-                                                    data-bs-toggle="tab"
-                                                    data-bs-target="#step3-tab-pane">Next</button>
+                                                <button type="button" id="saveStep2Btn"
+                                                    class="btn btn-primary py-3 px-5 fw-semibold text-white">Next</button>
                                             </div>
                                         </div>
                                     </div>
@@ -695,10 +757,12 @@
                                                         <label class="label fs-16">Company Name *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-building-4-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="companyName" name="name" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter company name">
+                                                                placeholder="Enter company name" maxlength="200"
+                                                                autocomplete="organization">
                                                         </div>
+                                                        <div id="companyNameError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -706,10 +770,12 @@
                                                         <label class="label fs-16">Company Address *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-map-pin-line input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="companyAddress" name="address" type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter company address">
+                                                                placeholder="Enter company address" maxlength="500"
+                                                                autocomplete="street-address">
                                                         </div>
+                                                        <div id="companyAddressError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -717,10 +783,13 @@
                                                         <label class="label fs-16">Customer Care Number *</label>
                                                         <div class="position-relative">
                                                             <i class="ri-customer-service-2-line input-icon"></i>
-                                                            <input type="tel"
+                                                            <input id="customerCarePhone" name="customer_care_phone"
+                                                                type="tel"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter customer care number">
+                                                                placeholder="Enter customer care number" maxlength="10"
+                                                                autocomplete="tel">
                                                         </div>
+                                                        <div id="customerCarePhoneError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -729,10 +798,13 @@
                                                             (Optional)</label>
                                                         <div class="position-relative">
                                                             <i class="ri-hashtag input-icon"></i>
-                                                            <input type="text"
+                                                            <input id="companyRegNumber" name="registration_number"
+                                                                type="text"
                                                                 class="form-control text-dark h-55 form-control-icon"
-                                                                placeholder="Enter company registration number">
+                                                                placeholder="Enter company registration number"
+                                                                maxlength="100">
                                                         </div>
+                                                        <div id="companyRegNumberError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-lg-12">
@@ -740,10 +812,12 @@
                                                         <label class="label fs-16">Upload BR (PDF) (Optional)</label>
                                                         <div class="position-relative">
                                                             <i class="ri-file-pdf-line input-icon"></i>
-                                                            <input type="file"
+                                                            <input id="brPdfInput" name="business_reg_pdf" type="file"
                                                                 class="form-control text-dark h-55 form-control-icon"
                                                                 accept=".pdf,application/pdf">
                                                         </div>
+                                                        <div id="brPdfInputError" class="field-error"></div>
+                                                        <div id="brPdfSavedLabel" class="text-success fs-14 mt-2 d-none">BR document saved</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -759,8 +833,8 @@
                                                                 <div class="upload-chip">
                                                                     <i class="ri-upload-2-line"></i>
                                                                     <span>Upload logo</span>
-                                                                    <input id="companyLogoInput" type="file"
-                                                                        accept="image/*">
+                                                                    <input id="companyLogoInput" name="logo" type="file"
+                                                                        accept="image/jpeg,image/png,image/webp">
                                                                 </div>
                                                             </div>
                                                             <div
@@ -773,13 +847,13 @@
                                                                     preview shown
                                                                     immediately</p>
                                                             </div>
+                                                            <span class="upload-saved-label">Logo saved</span>
                                                         </div>
+                                                        <div id="companyLogoInputError" class="field-error"></div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-
-
 
                                         <div class="col-lg-12">
                                             <div class="form-group d-flex gap-3">
@@ -787,10 +861,8 @@
                                                     class="btn btn-primary bg-primary bg-opacity-10 text-primary py-3 px-5 fw-semibold border-0"
                                                     data-bs-toggle="tab"
                                                     data-bs-target="#step2-tab-pane">Back</button>
-                                                <button type="button"
-                                                    class="btn btn-primary py-3 px-5 fw-semibold text-white"
-                                                    data-bs-toggle="tab"
-                                                    data-bs-target="#step4-tab-pane">Next</button>
+                                                <button type="button" id="saveStep3Btn"
+                                                    class="btn btn-primary py-3 px-5 fw-semibold text-white">Next</button>
                                             </div>
                                         </div>
                                     </div>
@@ -805,10 +877,10 @@
                                     <div class="row">
                                         <div class="col-lg-6">
                                             <div class="form-group mb-4">
-                                                <label class="label fs-16">Name *</label>
+                                                <label class="label fs-16">Account Name *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-user-3-line input-icon"></i>
-                                                    <input type="text"
+                                                    <input id="accountName" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter account holder name">
                                                 </div>
@@ -816,10 +888,10 @@
                                         </div>
                                         <div class="col-lg-6">
                                             <div class="form-group mb-4">
-                                                <label class="label fs-16">Banks Name *</label>
+                                                <label class="label fs-16">Bank Name *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-bank-line input-icon"></i>
-                                                    <input type="text"
+                                                    <input id="bankName" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter bank name">
                                                 </div>
@@ -830,7 +902,7 @@
                                                 <label class="label fs-16">Branch Name *</label>
                                                 <div class="position-relative">
                                                     <i class="ri-store-2-line input-icon"></i>
-                                                    <input type="text"
+                                                    <input id="branchName" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter branch name">
                                                 </div>
@@ -838,10 +910,21 @@
                                         </div>
                                         <div class="col-lg-6">
                                             <div class="form-group mb-4">
-                                                <label class="label fs-16">Bank Code *</label>
+                                                <label class="label fs-16">Account Number *</label>
+                                                <div class="position-relative">
+                                                    <i class="ri-numbers-line input-icon"></i>
+                                                    <input id="accountNumber" type="text"
+                                                        class="form-control text-dark h-55 form-control-icon"
+                                                        placeholder="Enter account number">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="form-group mb-4">
+                                                <label class="label fs-16">Bank Code (Optional)</label>
                                                 <div class="position-relative">
                                                     <i class="ri-barcode-box-line input-icon"></i>
-                                                    <input type="text"
+                                                    <input id="bankCode" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter bank code">
                                                 </div>
@@ -849,10 +932,10 @@
                                         </div>
                                         <div class="col-lg-6">
                                             <div class="form-group mb-4">
-                                                <label class="label fs-16">Branch Code *</label>
+                                                <label class="label fs-16">Branch Code (Optional)</label>
                                                 <div class="position-relative">
                                                     <i class="ri-code-s-slash-line input-icon"></i>
-                                                    <input type="text"
+                                                    <input id="branchCode" type="text"
                                                         class="form-control text-dark h-55 form-control-icon"
                                                         placeholder="Enter branch code">
                                                 </div>
@@ -932,8 +1015,11 @@
             const stepPanes = Array.from(document.querySelectorAll('#myTabstep2Content .tab-pane'));
             const sendOtpBtn = document.getElementById('sendOtpBtn');
             const submitOtpBtn = document.getElementById('submitOtpBtn');
+            const saveStep2Btn = document.getElementById('saveStep2Btn');
+            const saveStep3Btn = document.getElementById('saveStep3Btn');
             const activateStep2Btn = document.getElementById('activateStep2Btn');
             const completeRegistrationBtn = document.getElementById('completeRegistrationBtn');
+            const stepOneAlert = document.getElementById('stepOneAlert');
             const otpStep = document.getElementById('otpStep');
             const passwordStep = document.getElementById('passwordStep');
             const verifyPasswordStep = document.getElementById('verifyPasswordStep');
@@ -947,30 +1033,45 @@
             const companyLogoInput = document.getElementById('companyLogoInput');
             const companyLogoPreview = document.getElementById('companyLogoPreview');
             const companyLogoUploadBox = document.getElementById('companyLogoUploadBox');
+            const brPdfInput = document.getElementById('brPdfInput');
+            const brPdfSavedLabel = document.getElementById('brPdfSavedLabel');
             const firstName = document.getElementById('firstName');
             const lastName = document.getElementById('lastName');
             const address = document.getElementById('address');
             const nic = document.getElementById('nic');
             const personalPhone = document.getElementById('personalPhone');
+            const companyName = document.getElementById('companyName');
+            const companyAddress = document.getElementById('companyAddress');
+            const customerCarePhone = document.getElementById('customerCarePhone');
+            const companyRegNumber = document.getElementById('companyRegNumber');
+            const accountName = document.getElementById('accountName');
+            const bankName = document.getElementById('bankName');
+            const branchName = document.getElementById('branchName');
+            const bankCode = document.getElementById('bankCode');
+            const branchCode = document.getElementById('branchCode');
+            const accountNumber = document.getElementById('accountNumber');
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const stepTwoTab = document.getElementById('step2-tab');
 
             let otpVerified = false;
             let userRegistered = false;
-            let registeringUserUuid = null;
+            let stepOneRequiresPassword = false;
+            let profilePhotoUuid = null;
+            let companyLogoUuid = null;
+            let businessRegPdfUuid = null;
+            let registeringUserUuid = localStorage.getItem('feeder_reseller_user_uuid') || null;
 
             function syncThemeIcon() {
                 if (!themeToggleButton || !authThemeIcon) {
                     return;
                 }
 
-                authThemeIcon.textContent = document.body.getAttribute('data-theme') === 'dark' ? 'light_mode' :
-                    'dark_mode';
+                authThemeIcon.textContent = document.body.getAttribute('data-theme') === 'dark' ? 'light_mode' : 'dark_mode';
             }
 
             function syncMobileSummary(activeIndex) {
                 const stepButton = stepButtons[activeIndex - 1];
-                const stepNumber = stepItems[activeIndex - 1]?.querySelector('.step-number')?.textContent?.trim() ||
-                    String(activeIndex);
+                const stepNumber = stepItems[activeIndex - 1]?.querySelector('.step-number')?.textContent?.trim() || String(activeIndex);
                 const title = stepButton?.querySelector('h4')?.textContent?.trim() || '';
                 const subtitle = stepButton?.querySelector('p')?.textContent?.trim() || '';
 
@@ -1014,6 +1115,7 @@
                     const isActive = index + 1 === activeIndex;
                     button.classList.toggle('active', isActive);
                     button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+
                     if (isActive) {
                         bootstrap.Tab.getOrCreateInstance(button).show();
                     }
@@ -1027,6 +1129,12 @@
 
                 syncMobileSummary(activeIndex);
                 syncContainerHeight();
+            }
+
+            function buildRequestError(payload) {
+                const error = new Error(extractErrorMessage(payload));
+                error.payload = payload;
+                return error;
             }
 
             function extractErrorMessage(payload) {
@@ -1046,6 +1154,26 @@
                 return 'Request failed. Please try again.';
             }
 
+            async function postRegistration(url, data) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw buildRequestError(payload);
+                }
+
+                return payload;
+            }
+
             async function postRegistrationForm(url, formData) {
                 const response = await fetch(url, {
                     method: 'POST',
@@ -1056,29 +1184,697 @@
                     body: formData,
                 });
 
-                const data = await response.json().catch(() => ({}));
+                const payload = await response.json().catch(() => ({}));
 
                 if (!response.ok) {
-                    throw new Error(extractErrorMessage(data));
+                    throw buildRequestError(payload);
                 }
 
-                return data;
+                return payload;
+            }
+
+            async function getRegistrationDraft(uuid) {
+                const response = await fetch(`{{ url('/auth/register/draft') }}/${uuid}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                });
+
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw buildRequestError(payload);
+                }
+
+                return payload.draft;
+            }
+
+            function setFieldError(field, message) {
+                const errorNode = document.getElementById(`${field.id}Error`);
+                field.classList.add('is-invalid');
+
+                if (errorNode) {
+                    errorNode.textContent = message;
+                    errorNode.classList.add('is-visible');
+                }
+            }
+
+            function clearFieldError(field) {
+                const errorNode = document.getElementById(`${field.id}Error`);
+                field.classList.remove('is-invalid');
+
+                if (errorNode) {
+                    errorNode.textContent = '';
+                    errorNode.classList.remove('is-visible');
+                }
+            }
+
+            function clearStepOneValidation() {
+                [contactNumber, otpCode, passwordInput, verifyPasswordInput].forEach(clearFieldError);
+            }
+
+            function showStepOneAlert(message) {
+                if (!stepOneAlert || !message) {
+                    return;
+                }
+
+                stepOneAlert.textContent = message;
+                stepOneAlert.classList.add('is-visible');
+            }
+
+            function hideStepOneAlert() {
+                if (!stepOneAlert) {
+                    return;
+                }
+
+                stepOneAlert.textContent = '';
+                stepOneAlert.classList.remove('is-visible');
+            }
+
+            function showOtpSection() {
+                otpStep.classList.add('is-visible');
+                submitOtpBtn.classList.add('is-visible');
+                sendOtpBtn.textContent = 'Resend OTP';
+            }
+
+            function showPasswordSection() {
+                passwordStep.classList.add('is-visible');
+                verifyPasswordStep.classList.add('is-visible');
+                activateStep2Btn.classList.add('is-visible');
+            }
+
+            function hidePasswordSection() {
+                passwordStep.classList.remove('is-visible');
+                verifyPasswordStep.classList.remove('is-visible');
+                passwordInput.value = '';
+                verifyPasswordInput.value = '';
+                clearFieldError(passwordInput);
+                clearFieldError(verifyPasswordInput);
+            }
+
+            function persistRegistrationUuid(uuid) {
+                registeringUserUuid = uuid || null;
+
+                if (registeringUserUuid) {
+                    localStorage.setItem('feeder_reseller_user_uuid', registeringUserUuid);
+                } else {
+                    localStorage.removeItem('feeder_reseller_user_uuid');
+                }
+            }
+
+            function validatePhoneField() {
+                const normalized = contactNumber.value.replace(/\D/g, '').slice(0, 10);
+                contactNumber.value = normalized;
+
+                if (normalized.length === 0) {
+                    setFieldError(contactNumber, 'Contact number is required.');
+                    return false;
+                }
+
+                if (!/^\d{10}$/.test(normalized)) {
+                    setFieldError(contactNumber, 'Enter a valid 10 digit contact number.');
+                    return false;
+                }
+
+                clearFieldError(contactNumber);
+                return true;
+            }
+
+            function validateOtpField() {
+                otpCode.value = otpCode.value.replace(/\D/g, '').slice(0, 6);
+
+                if (!otpStep.classList.contains('is-visible')) {
+                    clearFieldError(otpCode);
+                    return true;
+                }
+
+                if (otpCode.value.length === 0) {
+                    setFieldError(otpCode, 'OTP is required.');
+                    return false;
+                }
+
+                if (!/^\d{4,6}$/.test(otpCode.value)) {
+                    setFieldError(otpCode, 'Enter a valid OTP.');
+                    return false;
+                }
+
+                clearFieldError(otpCode);
+                return true;
+            }
+
+            function validatePasswordField() {
+                if (!stepOneRequiresPassword) {
+                    clearFieldError(passwordInput);
+                    return true;
+                }
+
+                if (passwordInput.value.length === 0) {
+                    setFieldError(passwordInput, 'Password is required.');
+                    return false;
+                }
+
+                if (passwordInput.value.length < 8) {
+                    setFieldError(passwordInput, 'Password must be at least 8 characters.');
+                    return false;
+                }
+
+                clearFieldError(passwordInput);
+                return true;
+            }
+
+            function validatePasswordConfirmationField() {
+                if (!stepOneRequiresPassword) {
+                    clearFieldError(verifyPasswordInput);
+                    return true;
+                }
+
+                if (verifyPasswordInput.value.length === 0) {
+                    setFieldError(verifyPasswordInput, 'Please confirm your password.');
+                    return false;
+                }
+
+                if (passwordInput.value !== verifyPasswordInput.value) {
+                    setFieldError(verifyPasswordInput, 'Passwords do not match.');
+                    return false;
+                }
+
+                clearFieldError(verifyPasswordInput);
+                return true;
+            }
+
+            function applyStepOneServerErrors(payload) {
+                const errors = payload?.errors;
+
+                if (!errors || typeof errors !== 'object') {
+                    return;
+                }
+
+                if (Array.isArray(errors.phone) && errors.phone[0]) {
+                    setFieldError(contactNumber, errors.phone[0]);
+                }
+
+                if (Array.isArray(errors.otp) && errors.otp[0]) {
+                    setFieldError(otpCode, errors.otp[0]);
+                }
+
+                if (Array.isArray(errors.password) && errors.password[0]) {
+                    setFieldError(passwordInput, errors.password[0]);
+                }
+
+                if (Array.isArray(errors.password_confirmation) && errors.password_confirmation[0]) {
+                    setFieldError(verifyPasswordInput, errors.password_confirmation[0]);
+                }
             }
 
             function updateStepOneControls() {
-                const contactValid = /^\d{10}$/.test(contactNumber.value);
+                const phoneValid = /^\d{10}$/.test(contactNumber.value);
                 const otpVisible = otpStep.classList.contains('is-visible');
-                const passwordVisible = passwordStep.classList.contains('is-visible');
+                const otpValid = /^\d{4,6}$/.test(otpCode.value);
+                const passwordValid = !stepOneRequiresPassword || (
+                    passwordInput.value.length >= 8 &&
+                    verifyPasswordInput.value.length > 0 &&
+                    passwordInput.value === verifyPasswordInput.value
+                );
 
-                sendOtpBtn.disabled = !contactValid;
-                submitOtpBtn.disabled = !(/^[0-9]{4,6}$/.test(otpCode.value));
-                activateStep2Btn.disabled = !(contactValid && otpVisible && passwordVisible && otpVerified &&
-                    passwordInput.value.length > 0 && verifyPasswordInput.value.length > 0 &&
-                    passwordInput.value === verifyPasswordInput.value);
+                sendOtpBtn.disabled = !phoneValid || contactNumber.disabled;
+                submitOtpBtn.disabled = !otpVisible || !otpValid || otpCode.disabled;
+                activateStep2Btn.disabled = !(otpVerified && userRegistered) && !(otpVerified && stepOneRequiresPassword && passwordValid);
+            }
+
+            function moveToStepTwo() {
+                if (!stepTwoTab) {
+                    return;
+                }
+
+                bootstrap.Tab.getOrCreateInstance(stepTwoTab).show();
+                setStepState(2);
+            }
+
+            function finalizeVerifiedStepOne(phone, options = {}) {
+                const requiresPassword = Boolean(options.requiresPassword);
+
+                contactNumber.value = phone;
+                contactNumber.disabled = true;
+                otpCode.disabled = true;
+                otpVerified = true;
+                stepOneRequiresPassword = requiresPassword;
+
+                if (personalPhone) {
+                    personalPhone.value = phone;
+                }
+
+                showOtpSection();
+                sendOtpBtn.classList.add('d-none');
+                submitOtpBtn.classList.add('d-none');
+                activateStep2Btn.classList.add('is-visible');
+
+                if (requiresPassword) {
+                    userRegistered = false;
+                    showPasswordSection();
+                } else {
+                    userRegistered = true;
+                    hidePasswordSection();
+                }
+
+                updateStepOneControls();
+            }
+
+            function resetStepOneFlow() {
+                otpVerified = false;
+                userRegistered = false;
+                stepOneRequiresPassword = false;
+                persistRegistrationUuid(null);
+                otpCode.value = '';
+                otpCode.disabled = false;
+                contactNumber.disabled = false;
+                sendOtpBtn.classList.remove('d-none');
+                submitOtpBtn.classList.remove('is-visible');
+                showOtpSection();
+                otpStep.classList.remove('is-visible');
+                hidePasswordSection();
+                activateStep2Btn.classList.remove('is-visible');
+                sendOtpBtn.textContent = 'Send OTP';
+                updateStepOneControls();
+            }
+
+            function applySavedProfilePhoto(uuid) {
+                profilePhotoUuid = uuid;
+                personalImageUploadBox.classList.add('has-saved-photo');
+                clearFieldError(personalImageInput);
+            }
+
+            function applySavedCompanyLogo(uuid) {
+                companyLogoUuid = uuid;
+                companyLogoUploadBox.classList.add('has-saved-photo');
+                clearFieldError(companyLogoInput);
+            }
+
+            function applySavedBusinessRegPdf(uuid) {
+                businessRegPdfUuid = uuid || null;
+
+                if (brPdfSavedLabel) {
+                    brPdfSavedLabel.classList.toggle('d-none', !businessRegPdfUuid);
+                }
+
+                if (brPdfInput) {
+                    clearFieldError(brPdfInput);
+                }
+            }
+
+            function clearStepTwoValidation() {
+                [firstName, lastName, address, nic, personalImageInput].forEach(clearFieldError);
+            }
+
+            function clearStepThreeValidation() {
+                [companyName, companyAddress, customerCarePhone, companyRegNumber, companyLogoInput, brPdfInput]
+                    .filter(Boolean)
+                    .forEach(clearFieldError);
+            }
+
+            function validateFirstNameField() {
+                const value = firstName.value.trim();
+                firstName.value = value;
+
+                if (value.length === 0) {
+                    setFieldError(firstName, 'First name is required.');
+                    return false;
+                }
+
+                clearFieldError(firstName);
+                return true;
+            }
+
+            function validateLastNameField() {
+                const value = lastName.value.trim();
+                lastName.value = value;
+
+                if (value.length === 0) {
+                    setFieldError(lastName, 'Last name is required.');
+                    return false;
+                }
+
+                clearFieldError(lastName);
+                return true;
+            }
+
+            function validateAddressField() {
+                const value = address.value.trim();
+                address.value = value;
+
+                if (value.length === 0) {
+                    setFieldError(address, 'Residential address is required.');
+                    return false;
+                }
+
+                clearFieldError(address);
+                return true;
+            }
+
+            function validateNicField() {
+                nic.value = nic.value.toUpperCase().replace(/[^0-9VX]/g, '').slice(0, 12);
+
+                if (nic.value.length === 0) {
+                    setFieldError(nic, 'NIC number is required.');
+                    return false;
+                }
+
+                if (!/^([0-9]{9}[VX]|[0-9]{12})$/.test(nic.value)) {
+                    setFieldError(nic, 'Enter a valid NIC number.');
+                    return false;
+                }
+
+                clearFieldError(nic);
+                return true;
+            }
+
+            function validateProfilePhotoField() {
+                const hasNewPhoto = personalImageInput.files && personalImageInput.files[0];
+
+                if (!hasNewPhoto && !profilePhotoUuid) {
+                    setFieldError(personalImageInput, 'Profile photo is required.');
+                    return false;
+                }
+
+                if (hasNewPhoto) {
+                    const file = personalImageInput.files[0];
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+                    if (!allowedTypes.includes(file.type)) {
+                        setFieldError(personalImageInput, 'Profile photo must be a JPG, PNG, or WebP image.');
+                        return false;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                        setFieldError(personalImageInput, 'Maximum profile photo size is 5MB.');
+                        return false;
+                    }
+                }
+
+                clearFieldError(personalImageInput);
+                return true;
+            }
+
+            function validateStepTwoForm() {
+                const firstNameValid = validateFirstNameField();
+                const lastNameValid = validateLastNameField();
+                const addressValid = validateAddressField();
+                const nicValid = validateNicField();
+                const photoValid = validateProfilePhotoField();
+
+                return firstNameValid && lastNameValid && addressValid && nicValid && photoValid;
+            }
+
+            function applyStepTwoServerErrors(payload) {
+                const errors = payload?.errors;
+
+                if (!errors || typeof errors !== 'object') {
+                    return;
+                }
+
+                if (Array.isArray(errors.first_name) && errors.first_name[0]) {
+                    setFieldError(firstName, errors.first_name[0]);
+                }
+
+                if (Array.isArray(errors.last_name) && errors.last_name[0]) {
+                    setFieldError(lastName, errors.last_name[0]);
+                }
+
+                if (Array.isArray(errors.address) && errors.address[0]) {
+                    setFieldError(address, errors.address[0]);
+                }
+
+                if (Array.isArray(errors.nic) && errors.nic[0]) {
+                    setFieldError(nic, errors.nic[0]);
+                }
+
+                if (Array.isArray(errors.profile_photo) && errors.profile_photo[0]) {
+                    setFieldError(personalImageInput, errors.profile_photo[0]);
+                }
+
+                if (Array.isArray(errors.profile_photo_uuid) && errors.profile_photo_uuid[0]) {
+                    setFieldError(personalImageInput, errors.profile_photo_uuid[0]);
+                }
+
+                if (Array.isArray(errors.user_uuid) && errors.user_uuid[0]) {
+                    alert(errors.user_uuid[0]);
+                }
+            }
+
+            function fillPersonalDraft(personal) {
+                if (!personal) {
+                    return;
+                }
+
+                firstName.value = personal.first_name || '';
+                lastName.value = personal.last_name || '';
+                address.value = personal.address || '';
+                nic.value = personal.nic || '';
+
+                if (personal.profile_photo) {
+                    applySavedProfilePhoto(personal.profile_photo);
+                }
+            }
+
+            function fillCompanyDraft(company) {
+                if (!company) {
+                    return;
+                }
+
+                companyName.value = company.name || '';
+                companyAddress.value = company.address || '';
+                customerCarePhone.value = company.customer_care_phone || '';
+
+                if (companyRegNumber) {
+                    companyRegNumber.value = company.registration_number || '';
+                }
+
+                if (company.logo_uuid) {
+                    applySavedCompanyLogo(company.logo_uuid);
+                }
+
+                if (company.business_reg_pdf_uuid) {
+                    applySavedBusinessRegPdf(company.business_reg_pdf_uuid);
+                }
+            }
+
+            function fillBankDraft(bank) {
+                if (!bank) {
+                    return;
+                }
+
+                accountName.value = bank.account_name || '';
+                bankName.value = bank.bank_name || '';
+                branchName.value = bank.branch_name || '';
+                accountNumber.value = bank.account_number || '';
+
+                if (bankCode) {
+                    bankCode.value = bank.bank_code || '';
+                }
+
+                if (branchCode) {
+                    branchCode.value = bank.branch_code || '';
+                }
+            }
+
+            function validateCompanyNameField() {
+                const value = companyName.value.trim();
+                companyName.value = value;
+
+                if (value.length === 0) {
+                    setFieldError(companyName, 'Company name is required.');
+                    return false;
+                }
+
+                clearFieldError(companyName);
+                return true;
+            }
+
+            function validateCompanyAddressField() {
+                const value = companyAddress.value.trim();
+                companyAddress.value = value;
+
+                if (value.length === 0) {
+                    setFieldError(companyAddress, 'Company address is required.');
+                    return false;
+                }
+
+                clearFieldError(companyAddress);
+                return true;
+            }
+
+            function validateCustomerCarePhoneField() {
+                const normalized = customerCarePhone.value.replace(/\D/g, '').slice(0, 10);
+                customerCarePhone.value = normalized;
+
+                if (normalized.length === 0) {
+                    setFieldError(customerCarePhone, 'Customer care number is required.');
+                    return false;
+                }
+
+                if (!/^\d{10}$/.test(normalized)) {
+                    setFieldError(customerCarePhone, 'Enter a valid 10 digit customer care number.');
+                    return false;
+                }
+
+                clearFieldError(customerCarePhone);
+                return true;
+            }
+
+            function validateCompanyLogoField() {
+                const hasNewLogo = companyLogoInput.files && companyLogoInput.files[0];
+
+                if (!hasNewLogo && !companyLogoUuid) {
+                    setFieldError(companyLogoInput, 'Company logo is required.');
+                    return false;
+                }
+
+                if (hasNewLogo) {
+                    const file = companyLogoInput.files[0];
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+                    if (!allowedTypes.includes(file.type)) {
+                        setFieldError(companyLogoInput, 'Company logo must be a JPG, PNG, or WebP image.');
+                        return false;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                        setFieldError(companyLogoInput, 'Maximum company logo size is 5MB.');
+                        return false;
+                    }
+                }
+
+                clearFieldError(companyLogoInput);
+                return true;
+            }
+
+            function validateBusinessRegPdfField() {
+                if (!brPdfInput) {
+                    return true;
+                }
+
+                const hasNewPdf = brPdfInput.files && brPdfInput.files[0];
+
+                if (!hasNewPdf) {
+                    clearFieldError(brPdfInput);
+                    return true;
+                }
+
+                const file = brPdfInput.files[0];
+
+                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                    setFieldError(brPdfInput, 'Business registration document must be a PDF.');
+                    return false;
+                }
+
+                if (file.size > 10 * 1024 * 1024) {
+                    setFieldError(brPdfInput, 'Maximum business registration document size is 10MB.');
+                    return false;
+                }
+
+                clearFieldError(brPdfInput);
+                return true;
+            }
+
+            function validateStepThreeForm() {
+                const nameValid = validateCompanyNameField();
+                const addressValid = validateCompanyAddressField();
+                const phoneValid = validateCustomerCarePhoneField();
+                const logoValid = validateCompanyLogoField();
+                const brValid = validateBusinessRegPdfField();
+
+                return nameValid && addressValid && phoneValid && logoValid && brValid;
+            }
+
+            function applyStepThreeServerErrors(payload) {
+                const errors = payload?.errors;
+
+                if (!errors || typeof errors !== 'object') {
+                    return;
+                }
+
+                if (Array.isArray(errors.name) && errors.name[0]) {
+                    setFieldError(companyName, errors.name[0]);
+                }
+
+                if (Array.isArray(errors.address) && errors.address[0]) {
+                    setFieldError(companyAddress, errors.address[0]);
+                }
+
+                if (Array.isArray(errors.customer_care_phone) && errors.customer_care_phone[0]) {
+                    setFieldError(customerCarePhone, errors.customer_care_phone[0]);
+                }
+
+                if (Array.isArray(errors.registration_number) && errors.registration_number[0] && companyRegNumber) {
+                    setFieldError(companyRegNumber, errors.registration_number[0]);
+                }
+
+                if (Array.isArray(errors.logo) && errors.logo[0]) {
+                    setFieldError(companyLogoInput, errors.logo[0]);
+                }
+
+                if (Array.isArray(errors.logo_uuid) && errors.logo_uuid[0]) {
+                    setFieldError(companyLogoInput, errors.logo_uuid[0]);
+                }
+
+                if (Array.isArray(errors.business_reg_pdf) && errors.business_reg_pdf[0] && brPdfInput) {
+                    setFieldError(brPdfInput, errors.business_reg_pdf[0]);
+                }
+
+                if (Array.isArray(errors.business_reg_pdf_uuid) && errors.business_reg_pdf_uuid[0] && brPdfInput) {
+                    setFieldError(brPdfInput, errors.business_reg_pdf_uuid[0]);
+                }
+
+                if (Array.isArray(errors.user_uuid) && errors.user_uuid[0]) {
+                    alert(errors.user_uuid[0]);
+                }
+            }
+
+            async function resumeRegistrationProgress(preferredStep = null) {
+                if (!registeringUserUuid) {
+                    return;
+                }
+
+                const draft = await getRegistrationDraft(registeringUserUuid);
+
+                if (draft.registration_submitted || draft.user?.status === 'PENDING') {
+                    showCompletedState();
+                    return;
+                }
+
+                if (draft.user?.phone) {
+                    finalizeVerifiedStepOne(draft.user.phone, {
+                        requiresPassword: false,
+                    });
+                }
+
+                fillPersonalDraft(draft.personal);
+                fillCompanyDraft(draft.company);
+                fillBankDraft(draft.bank);
+
+                const targetStep = Number(preferredStep || draft.current_step || 2);
+                setStepState(Math.min(Math.max(targetStep, 2), 4));
+            }
+
+            async function loadRegistrationDraft() {
+                if (!registeringUserUuid) {
+                    return;
+                }
+
+                try {
+                    await resumeRegistrationProgress();
+                } catch (error) {
+                    persistRegistrationUuid(null);
+                    profilePhotoUuid = null;
+                    companyLogoUuid = null;
+                    businessRegPdfUuid = null;
+                }
             }
 
             function updatePreview(input, preview, box) {
                 const file = input.files && input.files[0];
+
                 if (!file) {
                     preview.removeAttribute('src');
                     box.classList.remove('has-preview');
@@ -1101,46 +1897,64 @@
             });
 
             contactNumber.addEventListener('input', function() {
-                contactNumber.value = contactNumber.value.replace(/\D/g, '').slice(0, 10);
+                hideStepOneAlert();
+                validatePhoneField();
                 otpVerified = false;
                 userRegistered = false;
+                stepOneRequiresPassword = false;
+                otpCode.disabled = false;
+                sendOtpBtn.classList.remove('d-none');
+                submitOtpBtn.classList.remove('d-none');
+                hidePasswordSection();
+                activateStep2Btn.classList.remove('is-visible');
                 updateStepOneControls();
             });
 
+            contactNumber.addEventListener('blur', validatePhoneField);
             otpCode.addEventListener('input', function() {
-                otpCode.value = otpCode.value.replace(/\D/g, '').slice(0, 6);
+                validateOtpField();
+                updateStepOneControls();
+            });
+            otpCode.addEventListener('blur', validateOtpField);
+
+            passwordInput.addEventListener('input', function() {
+                validatePasswordField();
+                validatePasswordConfirmationField();
                 updateStepOneControls();
             });
 
-            [passwordInput, verifyPasswordInput].forEach((field) => {
-                field.addEventListener('input', updateStepOneControls);
+            verifyPasswordInput.addEventListener('input', function() {
+                validatePasswordConfirmationField();
+                updateStepOneControls();
             });
 
             sendOtpBtn.addEventListener('click', async function() {
-                const contactValid = /^\d{10}$/.test(contactNumber.value);
-                if (!contactValid) {
+                hideStepOneAlert();
+                clearStepOneValidation();
+
+                if (!validatePhoneField()) {
                     contactNumber.focus();
+                    updateStepOneControls();
                     return;
                 }
 
                 sendOtpBtn.disabled = true;
                 otpVerified = false;
                 userRegistered = false;
+                stepOneRequiresPassword = false;
 
                 try {
-                    const response = await postRegistration(
-                        '{{ route('reseller.registration.send-otp') }}', {
-                            phone: contactNumber.value,
-                        });
+                    const response = await postRegistration('{{ route('reseller.registration.send-otp') }}', {
+                        phone: contactNumber.value,
+                    });
 
-                    otpStep.classList.add('is-visible');
-                    submitOtpBtn.classList.add('is-visible');
-                    sendOtpBtn.textContent = 'Resend OTP';
+                    showOtpSection();
 
                     if (response.otp) {
                         alert('Development OTP: ' + response.otp);
                     }
                 } catch (error) {
+                    applyStepOneServerErrors(error.payload);
                     alert(error.message);
                 } finally {
                     updateStepOneControls();
@@ -1148,29 +1962,63 @@
             });
 
             submitOtpBtn.addEventListener('click', async function() {
-                if (!/^[0-9]{4,6}$/.test(otpCode.value)) {
-                    otpCode.focus();
+                hideStepOneAlert();
+                clearFieldError(otpCode);
+
+                const phoneValid = validatePhoneField();
+                const otpValid = validateOtpField();
+
+                if (!phoneValid || !otpValid) {
+                    if (!phoneValid) {
+                        contactNumber.focus();
+                    } else {
+                        otpCode.focus();
+                    }
+
+                    updateStepOneControls();
                     return;
                 }
 
                 submitOtpBtn.disabled = true;
 
                 try {
-                    await postRegistration('{{ route('reseller.registration.verify-otp') }}', {
+                    const response = await postRegistration('{{ route('reseller.registration.verify-otp') }}', {
                         phone: contactNumber.value,
                         otp: otpCode.value,
                     });
 
-                    otpVerified = true;
-                    contactNumber.disabled = true;
-                    otpCode.disabled = true;
-                    sendOtpBtn.classList.add('d-none');
-                    submitOtpBtn.classList.add('d-none');
-                    passwordStep.classList.add('is-visible');
-                    verifyPasswordStep.classList.add('is-visible');
-                    activateStep2Btn.classList.add('is-visible');
+                    if (response.alert_message) {
+                        showStepOneAlert(response.alert_message);
+                    }
+
+                    if (response.can_proceed === false) {
+                        resetStepOneFlow();
+                        return;
+                    }
+
+                    if (response.user_uuid) {
+                        persistRegistrationUuid(response.user_uuid);
+                    }
+
+                    if (response.registration_submitted) {
+                        showCompletedState();
+                        return;
+                    }
+
+                    finalizeVerifiedStepOne(contactNumber.value, {
+                        requiresPassword: !response.password_is_set,
+                    });
+
+                    if (response.password_is_set) {
+                        try {
+                            await resumeRegistrationProgress(response.current_step);
+                        } catch (draftError) {
+                            moveToStepTwo();
+                        }
+                    }
                 } catch (error) {
                     otpVerified = false;
+                    applyStepOneServerErrors(error.payload);
                     alert(error.message);
                 } finally {
                     updateStepOneControls();
@@ -1178,34 +2026,215 @@
             });
 
             activateStep2Btn.addEventListener('click', async function() {
+                hideStepOneAlert();
+                clearFieldError(passwordInput);
+                clearFieldError(verifyPasswordInput);
+
                 if (activateStep2Btn.disabled) {
                     return;
                 }
 
-                if (!userRegistered) {
-                    activateStep2Btn.disabled = true;
-
+                if (!stepOneRequiresPassword) {
                     try {
-                        const response = await postRegistration(
-                            '{{ route('reseller.registration.user') }}', {
-                                phone: contactNumber.value,
-                                password: passwordInput.value,
-                                password_confirmation: verifyPasswordInput.value,
-                            }
-                        );
-
-                        registeringUserUuid = response.user.uuid;
-                        userRegistered = true;
+                        await resumeRegistrationProgress();
                     } catch (error) {
-                        alert(error.message);
-                        updateStepOneControls();
-                        return;
+                        moveToStepTwo();
                     }
+                    return;
                 }
 
-                bootstrap.Tab.getOrCreateInstance(document.getElementById('step2-tab')).show();
-                setStepState(2);
+                const passwordValid = validatePasswordField();
+                const confirmationValid = validatePasswordConfirmationField();
+
+                if (!passwordValid || !confirmationValid) {
+                    if (!passwordValid) {
+                        passwordInput.focus();
+                    } else {
+                        verifyPasswordInput.focus();
+                    }
+
+                    updateStepOneControls();
+                    return;
+                }
+
+                activateStep2Btn.disabled = true;
+
+                try {
+                    const response = await postRegistration('{{ route('reseller.registration.user') }}', {
+                        phone: contactNumber.value,
+                        password: passwordInput.value,
+                        password_confirmation: verifyPasswordInput.value,
+                    });
+
+                    persistRegistrationUuid(response.user.uuid);
+                    userRegistered = true;
+                    stepOneRequiresPassword = false;
+
+                    if (personalPhone) {
+                        personalPhone.value = contactNumber.value;
+                    }
+
+                    moveToStepTwo();
+                } catch (error) {
+                    applyStepOneServerErrors(error.payload);
+                    alert(error.message);
+                } finally {
+                    updateStepOneControls();
+                }
             });
+
+            [firstName, lastName, address].forEach((field) => {
+                field.addEventListener('input', function() {
+                    if (field === firstName) {
+                        validateFirstNameField();
+                    } else if (field === lastName) {
+                        validateLastNameField();
+                    } else {
+                        validateAddressField();
+                    }
+                });
+
+                field.addEventListener('blur', function() {
+                    if (field === firstName) {
+                        validateFirstNameField();
+                    } else if (field === lastName) {
+                        validateLastNameField();
+                    } else {
+                        validateAddressField();
+                    }
+                });
+            });
+
+            nic.addEventListener('input', validateNicField);
+            nic.addEventListener('blur', validateNicField);
+
+            if (saveStep2Btn) {
+                saveStep2Btn.addEventListener('click', async function() {
+                    clearStepTwoValidation();
+
+                    if (!registeringUserUuid) {
+                        alert('Please complete Step 1 first.');
+                        return;
+                    }
+
+                    if (!validateStepTwoForm()) {
+                        if (firstName.classList.contains('is-invalid')) {
+                            firstName.focus();
+                        } else if (lastName.classList.contains('is-invalid')) {
+                            lastName.focus();
+                        } else if (address.classList.contains('is-invalid')) {
+                            address.focus();
+                        } else if (nic.classList.contains('is-invalid')) {
+                            nic.focus();
+                        }
+
+                        return;
+                    }
+
+                    saveStep2Btn.disabled = true;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('user_uuid', registeringUserUuid);
+                        formData.append('first_name', firstName.value.trim());
+                        formData.append('last_name', lastName.value.trim());
+                        formData.append('address', address.value.trim());
+                        formData.append('nic', nic.value.trim().toUpperCase());
+
+                        const hasNewPhoto = personalImageInput.files && personalImageInput.files[0];
+
+                        if (hasNewPhoto) {
+                            formData.append('profile_photo', personalImageInput.files[0]);
+                        } else if (profilePhotoUuid) {
+                            formData.append('profile_photo_uuid', profilePhotoUuid);
+                        }
+
+                        const response = await postRegistrationForm('{{ route('reseller.registration.personal') }}', formData);
+
+                        if (response.profile?.profile_photo) {
+                            applySavedProfilePhoto(response.profile.profile_photo);
+                        }
+
+                        bootstrap.Tab.getOrCreateInstance(document.getElementById('step3-tab')).show();
+                        setStepState(3);
+                    } catch (error) {
+                        applyStepTwoServerErrors(error.payload);
+                        alert(error.message);
+                    } finally {
+                        saveStep2Btn.disabled = false;
+                    }
+                });
+            }
+
+            if (saveStep3Btn) {
+                saveStep3Btn.addEventListener('click', async function() {
+                    clearStepThreeValidation();
+
+                    if (!registeringUserUuid) {
+                        alert('Please complete previous steps first.');
+                        return;
+                    }
+
+                    if (!validateStepThreeForm()) {
+                        if (companyName.classList.contains('is-invalid')) {
+                            companyName.focus();
+                        } else if (companyAddress.classList.contains('is-invalid')) {
+                            companyAddress.focus();
+                        } else if (customerCarePhone.classList.contains('is-invalid')) {
+                            customerCarePhone.focus();
+                        }
+
+                        return;
+                    }
+
+                    saveStep3Btn.disabled = true;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('user_uuid', registeringUserUuid);
+                        formData.append('name', companyName.value.trim());
+                        formData.append('address', companyAddress.value.trim());
+                        formData.append('customer_care_phone', customerCarePhone.value.trim());
+
+                        if (companyRegNumber && companyRegNumber.value.trim()) {
+                            formData.append('registration_number', companyRegNumber.value.trim());
+                        }
+
+                        const hasNewLogo = companyLogoInput.files && companyLogoInput.files[0];
+                        const hasNewBr = brPdfInput && brPdfInput.files && brPdfInput.files[0];
+
+                        if (hasNewLogo) {
+                            formData.append('logo', companyLogoInput.files[0]);
+                        } else if (companyLogoUuid) {
+                            formData.append('logo_uuid', companyLogoUuid);
+                        }
+
+                        if (hasNewBr) {
+                            formData.append('business_reg_pdf', brPdfInput.files[0]);
+                        } else if (businessRegPdfUuid) {
+                            formData.append('business_reg_pdf_uuid', businessRegPdfUuid);
+                        }
+
+                        const response = await postRegistrationForm('{{ route('reseller.registration.company') }}', formData);
+
+                        if (response.company?.logo_uuid) {
+                            applySavedCompanyLogo(response.company.logo_uuid);
+                        }
+
+                        if (response.company?.business_reg_pdf_uuid) {
+                            applySavedBusinessRegPdf(response.company.business_reg_pdf_uuid);
+                        }
+
+                        bootstrap.Tab.getOrCreateInstance(document.getElementById('step4-tab')).show();
+                        setStepState(4);
+                    } catch (error) {
+                        applyStepThreeServerErrors(error.payload);
+                        alert(error.message);
+                    } finally {
+                        saveStep3Btn.disabled = false;
+                    }
+                });
+            }
 
             function showCompletedState() {
                 if (wizardTabs) {
@@ -1220,21 +2249,16 @@
                     registerContent.classList.add('completed-state');
                 }
 
-                if (mobileStepNumber || mobileStepTitle || mobileStepSubtitle) {
-                    const completedTitle = 'Completed';
-                    const completedSubtitle = 'Registration finished';
+                if (mobileStepNumber) {
+                    mobileStepNumber.textContent = '4';
+                }
 
-                    if (mobileStepNumber) {
-                        mobileStepNumber.textContent = '4';
-                    }
+                if (mobileStepTitle) {
+                    mobileStepTitle.textContent = 'Completed';
+                }
 
-                    if (mobileStepTitle) {
-                        mobileStepTitle.textContent = completedTitle;
-                    }
-
-                    if (mobileStepSubtitle) {
-                        mobileStepSubtitle.textContent = completedSubtitle;
-                    }
+                if (mobileStepSubtitle) {
+                    mobileStepSubtitle.textContent = 'Registration finished';
                 }
 
                 if (completedMessage) {
@@ -1246,8 +2270,39 @@
             }
 
             if (completeRegistrationBtn) {
-                completeRegistrationBtn.addEventListener('click', function() {
-                    showCompletedState();
+                completeRegistrationBtn.addEventListener('click', async function() {
+                    if (!registeringUserUuid) {
+                        alert('Please complete previous steps first.');
+                        return;
+                    }
+
+                    if (!accountName.value.trim() || !bankName.value.trim() || !branchName.value.trim() || !accountNumber.value.trim()) {
+                        alert('Please fill out required finance details.');
+                        return;
+                    }
+
+                    completeRegistrationBtn.disabled = true;
+                    try {
+                        await postRegistration('{{ route('reseller.registration.bank') }}', {
+                            user_uuid: registeringUserUuid,
+                            account_name: accountName.value.trim(),
+                            bank_name: bankName.value.trim(),
+                            branch_name: branchName.value.trim(),
+                            bank_code: bankCode ? bankCode.value.trim() : null,
+                            branch_code: branchCode ? branchCode.value.trim() : null,
+                            account_number: accountNumber.value.trim(),
+                        });
+
+                        await postRegistration('{{ route('reseller.registration.submit') }}', {
+                            user_uuid: registeringUserUuid,
+                        });
+
+                        showCompletedState();
+                    } catch (error) {
+                        alert(error.message);
+                    } finally {
+                        completeRegistrationBtn.disabled = false;
+                    }
                 });
             }
 
@@ -1264,11 +2319,38 @@
 
             personalImageInput.addEventListener('change', function() {
                 updatePreview(personalImageInput, personalImagePreview, personalImageUploadBox);
+                validateProfilePhotoField();
             });
+
+            [companyName, companyAddress].forEach((field) => {
+                field.addEventListener('input', function() {
+                    if (field === companyName) {
+                        validateCompanyNameField();
+                    } else {
+                        validateCompanyAddressField();
+                    }
+                });
+
+                field.addEventListener('blur', function() {
+                    if (field === companyName) {
+                        validateCompanyNameField();
+                    } else {
+                        validateCompanyAddressField();
+                    }
+                });
+            });
+
+            customerCarePhone.addEventListener('input', validateCustomerCarePhoneField);
+            customerCarePhone.addEventListener('blur', validateCustomerCarePhoneField);
 
             companyLogoInput.addEventListener('change', function() {
                 updatePreview(companyLogoInput, companyLogoPreview, companyLogoUploadBox);
+                validateCompanyLogoField();
             });
+
+            if (brPdfInput) {
+                brPdfInput.addEventListener('change', validateBusinessRegPdfField);
+            }
 
             window.addEventListener('resize', syncContainerHeight);
 
@@ -1277,6 +2359,7 @@
             syncThemeIcon();
             syncMobileSummary(1);
             syncContainerHeight();
+            loadRegistrationDraft();
         });
     </script>
 </body>

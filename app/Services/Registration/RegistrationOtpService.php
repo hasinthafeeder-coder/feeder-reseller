@@ -42,7 +42,6 @@ class RegistrationOtpService
         }
 
         $cached['verified'] = true;
-        $cached['verified_at'] = now()->toIso8601String();
 
         Cache::put(
             $this->cacheKey($phone),
