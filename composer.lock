@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ca06c01569c7b4a471e8d89d34302181",
+    "content-hash": "1817cc1ae431aa6425a4349b83739560",
     "packages": [
         {
             "name": "brick/math",
@@ -513,7 +513,7 @@
             "dist": {
                 "type": "path",
                 "url": "../feeder-core",
-                "reference": "5f4f901acb72cb482f555772740931fcf5a07084"
+                "reference": "940712a563875da55cbbcad5d0b3c3ca174db271"
             },
             "require": {
                 "illuminate/database": "^13.0",

@@ -206,7 +206,7 @@ class RegistrationService
 
     public function resolveCurrentStep(User $user): int
     {
-        $user->loadMissing(['profile', 'company.address', 'company.bankAccount']);
+        $user->loadMissing(['profile', 'company.address', 'company.bankAccounts']);
 
         if (! $this->hasPasswordSet($user)) {
             return 1;
@@ -264,7 +264,7 @@ class RegistrationService
     {
         /** @var User|null $user */
         $user = User::query()
-            ->with(['profile', 'company.address', 'company.bankAccount'])
+            ->with(['profile', 'company.address', 'company.bankAccounts'])
             ->where('uuid', $userUuid)
             ->first();
 
@@ -286,7 +286,7 @@ class RegistrationService
         $profile = $user->profile;
         $company = $user->company;
         $companyAddress = $company?->address;
-        $bankAccount = $company?->bankAccount;
+        $bankAccount = $company?->bankAccounts?->first();
         $registrationSubmitted = $user->status === UserStatus::PENDING->value;
 
         return [
@@ -331,7 +331,7 @@ class RegistrationService
         return DB::transaction(function () use ($userUuid) {
             /** @var User|null $user */
             $user = User::query()
-                ->with(['profile', 'company.address', 'company.bankAccount'])
+                ->with(['profile', 'company.address', 'company.bankAccounts'])
                 ->where('uuid', $userUuid)
                 ->first();
 
@@ -361,7 +361,7 @@ class RegistrationService
                 $errors['company'] = 'Company information is incomplete.';
             }
 
-            if (! $this->isBankStepComplete($user->company?->bankAccount)) {
+            if (! $this->isBankStepComplete($user->company?->bankAccounts?->first())) {
                 $errors['bank'] = 'Bank information is incomplete.';
             }
 

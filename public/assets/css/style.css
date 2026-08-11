@@ -3942,8 +3942,8 @@ textarea.form-control.is-invalid {
 }
 .btn:hover {
     color: var(--bs-btn-hover-color);
-    background-color: var(--bs-btn-hover-bg);
-    border-color: var(--bs-btn-hover-border-color);
+    background-color: #cc320f;
+    border-color: #cc320f;
 }
 .btn-check + .btn:hover {
     color: var(--bs-btn-color);
@@ -22283,7 +22283,7 @@ Dark Mode CSS
     margin-bottom: 0;
 }
 .default-table-area .table-responsive .table thead tr th {
-    background-color: #e7effd;
+    background-color: #fde7e7;
     color: #475569;
     font-weight: 400;
     font-size: 16px;
