@@ -32,8 +32,8 @@ class RegistrationService
         }
 
         $passwordIsSet = $this->hasPasswordSet($user);
-        $isRegistering = $user->status === UserStatus::REGISTERING->value;
-        $isPending = $user->status === UserStatus::PENDING->value;
+        $isRegistering = $user->status === UserStatus::REGISTERING;
+        $isPending = $user->status === UserStatus::PENDING;
 
         if ($isPending) {
             return [
@@ -89,7 +89,7 @@ class RegistrationService
 
         if (
             $user !== null &&
-            $user->status !== UserStatus::REGISTERING->value
+            $user->status !== UserStatus::REGISTERING
         ) {
 
             throw ValidationException::withMessages([
@@ -156,7 +156,7 @@ class RegistrationService
             ]);
         }
 
-        if ($user->status !== UserStatus::REGISTERING->value) {
+        if ($user->status !== UserStatus::REGISTERING) {
             throw ValidationException::withMessages([
                 'user_uuid' => 'Invalid registration session.',
             ]);
@@ -182,7 +182,7 @@ class RegistrationService
             ]);
         }
 
-        if ($user->status !== UserStatus::REGISTERING->value) {
+        if ($user->status !== UserStatus::REGISTERING) {
             throw ValidationException::withMessages([
                 'user_uuid' => 'Invalid registration session.',
             ]);
@@ -275,8 +275,8 @@ class RegistrationService
         }
 
         if (
-            $user->status !== UserStatus::REGISTERING->value
-            && $user->status !== UserStatus::PENDING->value
+            $user->status !== UserStatus::REGISTERING
+            && $user->status !== UserStatus::PENDING
         ) {
             throw ValidationException::withMessages([
                 'user_uuid' => 'Invalid registration session.',
@@ -287,7 +287,7 @@ class RegistrationService
         $company = $user->company;
         $companyAddress = $company?->address;
         $bankAccount = $company?->bankAccounts?->first();
-        $registrationSubmitted = $user->status === UserStatus::PENDING->value;
+        $registrationSubmitted = $user->status === UserStatus::PENDING;
 
         return [
             'user' => [
@@ -341,11 +341,11 @@ class RegistrationService
                 ]);
             }
 
-            if ($user->status === UserStatus::PENDING->value || $user->status === UserStatus::ACTIVE->value) {
+            if ($user->status === UserStatus::PENDING || $user->status === UserStatus::ACTIVE) {
                 return $user;
             }
 
-            if ($user->status !== UserStatus::REGISTERING->value) {
+            if ($user->status !== UserStatus::REGISTERING) {
                 throw ValidationException::withMessages([
                     'user_uuid' => 'Invalid registration session.',
                 ]);
@@ -369,7 +369,7 @@ class RegistrationService
                 throw ValidationException::withMessages($errors);
             }
 
-            $user->status = UserStatus::PENDING->value;
+            $user->status = UserStatus::PENDING;
             $user->save();
 
             if ($user->company) {

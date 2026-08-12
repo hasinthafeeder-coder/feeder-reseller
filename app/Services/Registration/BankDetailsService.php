@@ -26,7 +26,7 @@ class BankDetailsService
                 ]);
             }
 
-            if ($user->status !== UserStatus::REGISTERING->value) {
+            if ($user->status !== UserStatus::REGISTERING) {
                 throw ValidationException::withMessages([
                     'user_uuid' => 'Registration cannot be updated.',
                 ]);
