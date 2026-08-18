@@ -1051,6 +1051,7 @@
             const branchCode = document.getElementById('branchCode');
             const accountNumber = document.getElementById('accountNumber');
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const referralCode = new URLSearchParams(window.location.search).get('ref') || '';
             const stepTwoTab = document.getElementById('step2-tab');
 
             let otpVerified = false;
@@ -2064,6 +2065,8 @@
                         phone: contactNumber.value,
                         password: passwordInput.value,
                         password_confirmation: verifyPasswordInput.value,
+                        ref: referralCode,
+                        referral_code: referralCode,
                     });
 
                     persistRegistrationUuid(response.user.uuid);
@@ -2295,6 +2298,8 @@
 
                         await postRegistration('{{ route('reseller.registration.submit') }}', {
                             user_uuid: registeringUserUuid,
+                            ref: referralCode,
+                            referral_code: referralCode,
                         });
 
                         showCompletedState();

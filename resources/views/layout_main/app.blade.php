@@ -21,6 +21,7 @@
 
     <!-- Title -->
     <title>Fila - Bootstrap 5 Admin Dashboard Template</title>
+    @stack('styles')
 </head>
 
 <body class="bg-body-bg">
@@ -696,6 +697,7 @@
     <script src="{{ asset('assets/js/custom/echarts.js') }}"></script>
     <script src="{{ asset('assets/js/custom/maps.js') }}"></script>
     <script src="{{ asset('assets/js/custom/custom.js') }}"></script>
+    @stack('scripts')
 </body>
 
 </html>

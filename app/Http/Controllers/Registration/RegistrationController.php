@@ -31,7 +31,9 @@ class RegistrationController extends Controller
 
     public function create(): View
     {
-        return view('pages.auth.register');
+        return view('pages.auth.register', [
+            'referralCode' => request()->query('ref'),
+        ]);
     }
 
     public function sendOtp(VerifyPhoneRequest $request): JsonResponse
@@ -74,6 +76,7 @@ class RegistrationController extends Controller
         SubmitRegistrationRequest $request
     ): JsonResponse {
         $phone = $request->string('phone')->toString();
+        $referralCode = $request->string('referral_code')->toString() ?: $request->string('ref')->toString();
 
         if (! $this->registrationOtpService->isPhoneVerified($phone)) {
             throw ValidationException::withMessages([
@@ -84,6 +87,7 @@ class RegistrationController extends Controller
         $user = $this->registrationService->createOrResumeRegistration(
             phone: $phone,
             password: $request->string('password')->toString(),
+            referralCode: $referralCode !== '' ? $referralCode : null,
         );
 
         $this->registrationOtpService->clear($phone);
@@ -173,8 +177,11 @@ class RegistrationController extends Controller
 
     public function submitApplication(SubmitApplicationRequest $request): JsonResponse
     {
+        $referralCode = $request->string('referral_code')->toString() ?: $request->string('ref')->toString();
+
         $user = $this->registrationService->submitApplication(
-            $request->string('user_uuid')->toString()
+            $request->string('user_uuid')->toString(),
+            $referralCode !== '' ? $referralCode : null,
         );
 
         return response()->json([

@@ -5,6 +5,7 @@ namespace App\Services\Registration;
 use Feeder\Core\Enums\UserStatus;
 use Feeder\Core\Enums\UserType;
 use Feeder\Core\Models\User;
+use Feeder\Core\Services\Referral\ReferralService;
 use Feeder\Core\Services\UuidService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -12,6 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 class RegistrationService
 {
+    public function __construct(
+        private readonly ReferralService $referralService,
+    ) {}
+
     public function resolveStepOneStatus(string $phone): array
     {
         /** @var User|null $user */
@@ -74,7 +79,8 @@ class RegistrationService
 
     public function createOrResumeRegistration(
         string $phone,
-        string $password
+        string $password,
+        ?string $referralCode = null,
     ): User {
         /** @var User|null $user */
         $user = User::query()
@@ -95,6 +101,10 @@ class RegistrationService
             throw ValidationException::withMessages([
                 'phone' => 'This phone number is already registered.',
             ]);
+        }
+
+        if ($referralCode !== null && trim($referralCode) !== '') {
+            $this->referralService->validateReferralCode($referralCode);
         }
 
         /*
@@ -326,9 +336,9 @@ class RegistrationService
         ];
     }
 
-    public function submitApplication(string $userUuid): User
+    public function submitApplication(string $userUuid, ?string $referralCode = null): User
     {
-        return DB::transaction(function () use ($userUuid) {
+        return DB::transaction(function () use ($userUuid, $referralCode) {
             /** @var User|null $user */
             $user = User::query()
                 ->with(['profile', 'company.address', 'company.bankAccounts'])
@@ -369,6 +379,11 @@ class RegistrationService
                 throw ValidationException::withMessages($errors);
             }
 
+            if ($referralCode !== null && trim($referralCode) !== '') {
+                $this->referralService->validateReferralCode($referralCode, $user);
+                $this->referralService->createPermanentRelationship($user, $referralCode);
+            }
+
             $user->status = UserStatus::PENDING;
             $user->save();
 
@@ -379,5 +394,10 @@ class RegistrationService
 
             return $user;
         });
+    }
+
+    public function validateReferralCode(?string $referralCode, ?User $user = null): void
+    {
+        $this->referralService->validateReferralCode($referralCode, $user);
     }
 }
