@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Registration;
 
+use Feeder\Core\Services\CountryRegistrationRuleService;
+use Feeder\Core\Validation\Rules\ValidCountryCustomerCarePhone;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CompanyDetailsRequest extends FormRequest
@@ -13,10 +15,13 @@ class CompanyDetailsRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $rules = app(CountryRegistrationRuleService::class)->resolveForResellerRegistration();
+        $normalizedPhone = $rules->normalizeCustomerCarePhone((string) $this->input('customer_care_phone'));
+
         $this->merge([
             'name' => trim((string) $this->input('name')),
             'address' => trim((string) $this->input('address')),
-            'customer_care_phone' => preg_replace('/\D+/', '', (string) $this->input('customer_care_phone')) ?: null,
+            'customer_care_phone' => $normalizedPhone,
             'registration_number' => filled($this->input('registration_number'))
                 ? trim((string) $this->input('registration_number'))
                 : null,
@@ -31,11 +36,17 @@ class CompanyDetailsRequest extends FormRequest
 
     public function rules(): array
     {
+        $rules = app(CountryRegistrationRuleService::class)->resolveForResellerRegistration();
+
         return [
             'user_uuid' => ['required', 'string', 'size:10'],
             'name' => ['required', 'string', 'max:200'],
             'address' => ['required', 'string', 'max:500'],
-            'customer_care_phone' => ['required', 'string', 'regex:/^\d{10}$/'],
+            'customer_care_phone' => [
+                'required',
+                'string',
+                new ValidCountryCustomerCarePhone($rules),
+            ],
             'registration_number' => ['nullable', 'string', 'max:100'],
             'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'logo_uuid' => ['nullable', 'string', 'size:10'],
@@ -52,7 +63,6 @@ class CompanyDetailsRequest extends FormRequest
             'name.required' => 'Company name is required.',
             'address.required' => 'Company address is required.',
             'customer_care_phone.required' => 'Customer care number is required.',
-            'customer_care_phone.regex' => 'Enter a valid 10 digit customer care number.',
             'logo.image' => 'Company logo must be an image.',
             'logo.mimes' => 'Company logo must be a JPG, PNG, or WebP image.',
             'logo.max' => 'Maximum company logo size is 5MB.',

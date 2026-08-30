@@ -6,8 +6,11 @@ use Feeder\Core\Enums\ApplicationType;
 use Feeder\Core\Enums\UserStatus;
 use Feeder\Core\Models\User;
 use Feeder\Core\Models\UserProfile;
+use Feeder\Core\Services\CountryRegistrationRuleService;
 use Feeder\Core\Services\FileService;
 use Feeder\Core\Services\UuidService;
+use Feeder\Core\Support\IdentityDocumentStorage;
+use Feeder\Core\Support\UserProfileSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
@@ -19,6 +22,7 @@ class PersonalDetailsService
 {
     public function __construct(
         private readonly FileService $fileService,
+        private readonly CountryRegistrationRuleService $countryRegistrationRuleService,
     ) {}
 
     public function save(array $data): UserProfile
@@ -50,7 +54,9 @@ class PersonalDetailsService
                 $profile->user_id = $user->id;
             }
 
-            $this->assertNicIsUnique($data['nic'], $profile);
+            $countryRules = $this->countryRegistrationRuleService->resolveForResellerRegistration();
+            $normalizedIdentityNumber = $countryRules->normalizeIdentityDocument($data['nic']);
+            $this->assertIdentityDocumentIsUnique($normalizedIdentityNumber, $profile);
 
             $profilePhotoUuid = $this->resolveProfilePhotoUuid(
                 $user,
@@ -61,7 +67,7 @@ class PersonalDetailsService
 
             $profile->first_name = $data['first_name'];
             $profile->last_name = $data['last_name'];
-            $profile->nic = $data['nic'];
+            IdentityDocumentStorage::applyToProfile($profile, $countryRules, $normalizedIdentityNumber);
             $profile->address = $data['address'];
             $profile->profile_photo = $profilePhotoUuid;
             $profile->save();
@@ -70,17 +76,26 @@ class PersonalDetailsService
         });
     }
 
-    private function assertNicIsUnique(string $nic, UserProfile $profile): void
+    private function assertIdentityDocumentIsUnique(string $identityDocumentNumber, UserProfile $profile): void
     {
-        $nicQuery = UserProfile::query()->where('nic', $nic);
+        $identityQuery = UserProfile::query();
 
-        if ($profile->exists) {
-            $nicQuery->where('id', '!=', $profile->id);
+        if (UserProfileSchema::hasIdentityDocumentColumns()) {
+            $identityQuery->where(function ($query) use ($identityDocumentNumber): void {
+                $query->where('identity_document_number', $identityDocumentNumber)
+                    ->orWhere('nic', $identityDocumentNumber);
+            });
+        } else {
+            $identityQuery->where('nic', $identityDocumentNumber);
         }
 
-        if ($nicQuery->exists()) {
+        if ($profile->exists) {
+            $identityQuery->where('id', '!=', $profile->id);
+        }
+
+        if ($identityQuery->exists()) {
             throw ValidationException::withMessages([
-                'nic' => 'This NIC number is already registered.',
+                'nic' => 'This identity document number is already registered.',
             ]);
         }
     }

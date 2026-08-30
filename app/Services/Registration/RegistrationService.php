@@ -7,6 +7,7 @@ use Feeder\Core\Enums\UserType;
 use Feeder\Core\Models\User;
 use Feeder\Core\Services\Referral\ReferralService;
 use Feeder\Core\Services\UuidService;
+use Feeder\Core\Support\IdentityDocumentStorage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -241,7 +242,7 @@ class RegistrationService
 
         return filled($profile->first_name)
             && filled($profile->last_name)
-            && filled($profile->nic)
+            && IdentityDocumentStorage::isIdentityComplete($profile)
             && filled($profile->address)
             && filled($profile->profile_photo);
     }

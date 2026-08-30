@@ -25,48 +25,58 @@ class FinancialSettingsServiceTest extends TestCase
     public function test_default_service_charge_applies_without_override(): void
     {
         $service = app(ResellerServiceChargeService::class);
-        $service->setDefaultCharge(75);
+        $service->setDefaultCharge('lk', 75);
 
         $reseller = $this->createReseller('a@feeder.local', '0700000001');
 
-        $this->assertSame('75.00', $service->getEffectiveCharge($reseller));
+        $this->assertSame('75.00', $service->resolveServiceCharge($reseller, 'lk'));
     }
 
     public function test_reseller_override_takes_priority_over_default_charge(): void
     {
         $service = app(ResellerServiceChargeService::class);
-        $service->setDefaultCharge(75);
+        $service->setDefaultCharge('lk', 75);
 
         $reseller = $this->createReseller('b@feeder.local', '0700000002');
-        $service->setResellerOverride($reseller, 100);
+        $service->setResellerOverride($reseller, 'lk', 100);
 
-        $this->assertSame('100.00', $service->getEffectiveCharge($reseller));
+        $this->assertSame('100.00', $service->resolveServiceCharge($reseller, 'lk'));
     }
 
     public function test_default_change_keeps_override_independent(): void
     {
         $service = app(ResellerServiceChargeService::class);
-        $service->setDefaultCharge(80);
+        $service->setDefaultCharge('lk', 80);
 
         $resellerA = $this->createReseller('a@feeder.local', '0700000003');
         $resellerB = $this->createReseller('b@feeder.local', '0700000004');
 
-        $service->setResellerOverride($resellerB, 100);
+        $service->setResellerOverride($resellerB, 'lk', 100);
 
-        $this->assertSame('80.00', $service->getEffectiveCharge($resellerA));
-        $this->assertSame('100.00', $service->getEffectiveCharge($resellerB));
+        $this->assertSame('80.00', $service->resolveServiceCharge($resellerA, 'lk'));
+        $this->assertSame('100.00', $service->resolveServiceCharge($resellerB, 'lk'));
     }
 
     public function test_clear_override_returns_to_default_charge(): void
     {
         $service = app(ResellerServiceChargeService::class);
-        $service->setDefaultCharge(80);
+        $service->setDefaultCharge('lk', 80);
 
         $reseller = $this->createReseller('c@feeder.local', '0700000005');
-        $service->setResellerOverride($reseller, 100);
-        $service->clearResellerOverride($reseller);
+        $service->setResellerOverride($reseller, 'lk', 100);
+        $service->clearResellerOverride($reseller, 'lk');
 
-        $this->assertSame('80.00', $service->getEffectiveCharge($reseller));
+        $this->assertSame('80.00', $service->resolveServiceCharge($reseller, 'lk'));
+    }
+
+    public function test_introducer_bonus_resolves_per_market(): void
+    {
+        $service = app(IntroducerBonusService::class);
+        $service->setIntroducerBonus('lk', 50);
+        $service->setIntroducerBonus('my', 5);
+
+        $this->assertSame('50.00', $service->resolveIntroducerBonus('lk'));
+        $this->assertSame('5.00', $service->resolveIntroducerBonus('my'));
     }
 
     public function test_direct_introducer_resolves_to_nearest_parent(): void
