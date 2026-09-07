@@ -48,25 +48,62 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | O1.1 UI preview — Call Center Agents
-    | Temporary GET-only routes for UI review. No CRUD, no permission
-    | middleware, and no persistence. Replace in O1.2/O1.3.
+    | Call Center Agents
+    | List / Profile are production reads (O1.4-D1).
+    | Create is a production write (O1.4-D2).
+    | Edit is a production write (O1.4-D3).
+    | Activate / Deactivate are production writes (O1.4-D4).
+    | Commission update is a production write (O1.4-D5-A).
+    | Permission update is a production write (O1.4-D5-B).
     |--------------------------------------------------------------------------
     */
     Route::prefix('call-center/agents')->group(function () {
         Route::get('/', [AgentUiController::class, 'index'])
+            ->middleware('permission:call_center.agents.view')
             ->name('ui.call-center.agents.index');
 
         Route::get('/create', [AgentUiController::class, 'create'])
+            ->middleware('permission:call_center.agents.create')
             ->name('ui.call-center.agents.create');
 
+        Route::post('/', [AgentUiController::class, 'store'])
+            ->middleware('permission:call_center.agents.create')
+            ->name('ui.call-center.agents.store');
+
         Route::get('/{agent}', [AgentUiController::class, 'show'])
-            ->where('agent', '[a-z0-9-]+')
+            ->middleware('permission:call_center.agents.view')
+            ->where('agent', '[A-Za-z0-9-]+')
             ->name('ui.call-center.agents.show');
 
         Route::get('/{agent}/edit', [AgentUiController::class, 'edit'])
-            ->where('agent', '[a-z0-9-]+')
+            ->middleware('permission:call_center.agents.update')
+            ->where('agent', '[A-Za-z0-9-]+')
             ->name('ui.call-center.agents.edit');
+
+        Route::match(['put', 'patch'], '/{agent}', [AgentUiController::class, 'update'])
+            ->middleware('permission:call_center.agents.update')
+            ->where('agent', '[A-Za-z0-9-]+')
+            ->name('ui.call-center.agents.update');
+
+        Route::post('/{agent}/activate', [AgentUiController::class, 'activate'])
+            ->middleware('permission:call_center.agents.activate')
+            ->where('agent', '[A-Za-z0-9-]+')
+            ->name('ui.call-center.agents.activate');
+
+        Route::post('/{agent}/deactivate', [AgentUiController::class, 'deactivate'])
+            ->middleware('permission:call_center.agents.deactivate')
+            ->where('agent', '[A-Za-z0-9-]+')
+            ->name('ui.call-center.agents.deactivate');
+
+        Route::post('/{agent}/commission', [AgentUiController::class, 'updateCommission'])
+            ->middleware('permission:call_center.agents.commission.update')
+            ->where('agent', '[A-Za-z0-9-]+')
+            ->name('ui.call-center.agents.commission.update');
+
+        Route::post('/{agent}/permissions', [AgentUiController::class, 'updatePermissions'])
+            ->middleware('permission:call_center.agents.permissions.update')
+            ->where('agent', '[A-Za-z0-9-]+')
+            ->name('ui.call-center.agents.permissions.update');
     });
 
     Route::get('/products', [ProductController::class, 'index'])

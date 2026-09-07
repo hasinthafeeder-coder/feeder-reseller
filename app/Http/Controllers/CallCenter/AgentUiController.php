@@ -3,54 +3,209 @@
 namespace App\Http\Controllers\CallCenter;
 
 use App\Http\Controllers\Controller;
-use App\Support\CallCenter\AgentUiPreviewData;
-use Illuminate\Http\Request;
+use App\Http\Requests\CallCenter\IndexAgentRequest;
+use App\Http\Requests\CallCenter\StoreAgentRequest;
+use App\Http\Requests\CallCenter\UpdateAgentCommissionRequest;
+use App\Http\Requests\CallCenter\UpdateAgentPermissionsRequest;
+use App\Http\Requests\CallCenter\UpdateAgentRequest;
+use App\Services\CallCenter\AgentService;
+use App\Support\CallCenter\AgentViewData;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 /**
- * Temporary UI-only controller for O1.1 Call Center Agents screens.
+ * Call Center Agent screens.
  *
- * Routes here return Blade views with static preview data only.
- * They must not persist, authorize against the permission engine,
- * or call production services. Replace during O1.2/O1.3.
+ * List / Profile are production read endpoints (O1.4-D1).
+ * Create is a production write endpoint (O1.4-D2).
+ * Edit is a production write endpoint (O1.4-D3).
+ * Activate / Deactivate are production write endpoints (O1.4-D4).
+ * Commission update is a production write endpoint (O1.4-D5-A).
+ * Permission update is a production write endpoint (O1.4-D5-B).
  */
 class AgentUiController extends Controller
 {
     public function __construct(
-        private readonly AgentUiPreviewData $previewData,
+        private readonly AgentService $agentService,
+        private readonly AgentViewData $agentViewData,
     ) {}
 
-    public function index(Request $request): View
+    public function index(IndexAgentRequest $request): View
     {
-        return view(
-            'pages.call-center.agents.index',
-            $this->previewData->listViewData($request),
-        );
+        $actor = Auth::user();
+        $search = $request->search();
+        $status = $request->statusFilter();
+
+        $paginator = $this->agentService->paginateForCompany($actor, $search, $status);
+
+        $agents = $paginator->getCollection()
+            ->map(fn ($agent) => $this->agentViewData->forListItem($agent))
+            ->all();
+
+        return view('pages.call-center.agents.index', [
+            'agents' => $agents,
+            'agentsPaginator' => $paginator,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+            ],
+        ]);
     }
 
     public function create(): View
     {
-        return view(
-            'pages.call-center.agents.create',
-            $this->previewData->formViewData(),
-        );
+        $actor = Auth::user();
+
+        return view('pages.call-center.agents.create', [
+            'agent' => null,
+            'permissionCatalog' => $this->agentService->operationalPermissionCatalog(),
+            'assignedPermissions' => old('permissions', []),
+            'canManagePermissions' => $actor?->hasPermission(AgentService::PERMISSION_PERMISSIONS_UPDATE) ?? false,
+        ]);
+    }
+
+    public function store(StoreAgentRequest $request): RedirectResponse
+    {
+        $agent = $this->agentService->create(Auth::user(), $request->agentPayload());
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $agent->uuid)
+            ->with('success', 'Call Center Agent created successfully.');
     }
 
     public function edit(string $agent): View
     {
-        $viewData = $this->previewData->formViewData($agent);
+        $actor = Auth::user();
 
-        abort_if($viewData['agent'] === null, 404);
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
 
-        return view('pages.call-center.agents.edit', $viewData);
+        $permissionState = $this->agentService->profilePermissionDisplay($actor, $managed);
+        $canManagePermissions = $actor->hasPermission(AgentService::PERMISSION_PERMISSIONS_UPDATE);
+
+        return view(
+            'pages.call-center.agents.edit',
+            array_merge($this->agentViewData->forEdit($managed, $permissionState), [
+                'canManagePermissions' => $canManagePermissions,
+                'permissionFormId' => $canManagePermissions ? 'agent-permissions-form' : null,
+            ]),
+        );
+    }
+
+    public function update(UpdateAgentRequest $request, string $agent): RedirectResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+
+        $updated = $this->agentService->update($actor, $managed, $request->agentPayload());
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $updated->uuid)
+            ->with('success', 'Call Center Agent updated successfully.');
     }
 
     public function show(string $agent): View
     {
-        $viewData = $this->previewData->profileViewData($agent);
+        $actor = Auth::user();
 
-        abort_if($viewData === null, 404);
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
 
-        return view('pages.call-center.agents.show', $viewData);
+        $permissionState = $this->agentService->profilePermissionDisplay($actor, $managed);
+
+        return view(
+            'pages.call-center.agents.show',
+            $this->agentViewData->forProfile($managed, $permissionState),
+        );
+    }
+
+    public function activate(string $agent): RedirectResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+
+        $updated = $this->agentService->activate($actor, $managed);
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $updated->uuid)
+            ->with('success', 'Call Center Agent activated successfully.');
+    }
+
+    public function deactivate(string $agent): RedirectResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+
+        $updated = $this->agentService->deactivate($actor, $managed);
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $updated->uuid)
+            ->with('success', 'Call Center Agent deactivated successfully.');
+    }
+
+    public function updateCommission(UpdateAgentCommissionRequest $request, string $agent): RedirectResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+
+        $updated = $this->agentService->updateCommission(
+            $actor,
+            $managed,
+            $request->commissionAmount(),
+        );
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $updated->uuid)
+            ->with('success', 'Call Center Agent commission updated successfully.');
+    }
+
+    public function updatePermissions(UpdateAgentPermissionsRequest $request, string $agent): RedirectResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $managed = $this->agentService->findForManagement($actor, $agent);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+
+        $updated = $this->agentService->syncPermissionSelections(
+            $actor,
+            $managed,
+            $request->grantedIdentifiers(),
+            $request->deniedIdentifiers(),
+        );
+
+        return redirect()
+            ->route('ui.call-center.agents.show', $updated->uuid)
+            ->with('success', 'Call Center Agent permissions updated successfully.');
     }
 }

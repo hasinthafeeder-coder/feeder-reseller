@@ -2,7 +2,11 @@
 
 @php
     $agents = $agents ?? [];
+    $agentsPaginator = $agentsPaginator ?? null;
     $filters = $filters ?? ['search' => '', 'status' => ''];
+    $isEmpty = $agentsPaginator
+        ? $agentsPaginator->total() === 0
+        : $agents === [];
 @endphp
 
 @push('styles')
@@ -55,7 +59,7 @@
                         <label for="agentSearch" class="label fs-14 mb-2">Search agent</label>
                         <div class="table-src-form position-relative mx-0">
                             <input type="text" class="form-control w-100" id="agentSearch" name="search"
-                                value="{{ $filters['search'] }}" placeholder="Search by name, username or phone"
+                                value="{{ $filters['search'] }}" placeholder="Search by name or phone"
                                 style="height: 40px;">
                             <div class="src-btn position-absolute top-50 start-0 translate-middle-y bg-transparent p-0 border-0">
                                 <span class="material-symbols-outlined">search</span>
@@ -77,17 +81,25 @@
                 </form>
             </div>
 
-            @if ($agents === [])
+            @if ($isEmpty)
                 <div class="p-20">
                     <div class="text-center py-5 px-3">
                         <span class="material-symbols-outlined text-primary mb-3" style="font-size: 42px;">headset_mic</span>
-                        <h4 class="fs-18 fw-medium mb-2">No call center agents yet</h4>
+                        <h4 class="fs-18 fw-medium mb-2">
+                            {{ ($filters['search'] !== '' || $filters['status'] !== '') ? 'No agents match your filters' : 'No call center agents yet' }}
+                        </h4>
                         <p class="fs-15 text-body mb-4 mx-auto" style="max-width: 420px;">
-                            Add the first call center agent for this reseller company to assign work, set commission per completed order, and control permissions.
+                            @if ($filters['search'] !== '' || $filters['status'] !== '')
+                                Try a different search or clear the status filter.
+                            @else
+                                Add the first call center agent for this reseller company to assign work, set commission per completed order, and control permissions.
+                            @endif
                         </p>
-                        <a href="{{ route('ui.call-center.agents.create') }}" class="btn btn-primary text-white">
-                            Add Agent
-                        </a>
+                        @if ($filters['search'] === '' && $filters['status'] === '')
+                            <a href="{{ route('ui.call-center.agents.create') }}" class="btn btn-primary text-white">
+                                Add Agent
+                            </a>
+                        @endif
                     </div>
                 </div>
             @else
@@ -151,6 +163,8 @@
                                                     data-bs-target="#agentStatusToggleModal"
                                                     data-agent-name="{{ $agent['full_name'] }}"
                                                     data-agent-status="{{ $agent['status'] }}"
+                                                    data-activate-url="{{ route('ui.call-center.agents.activate', $agent['slug']) }}"
+                                                    data-deactivate-url="{{ route('ui.call-center.agents.deactivate', $agent['slug']) }}"
                                                     data-bs-title="{{ $agent['status'] === 'active' ? 'Deactivate' : 'Activate' }}"
                                                     aria-label="{{ $agent['status'] === 'active' ? 'Deactivate' : 'Activate' }}">
                                                     <i class="material-symbols-outlined fs-16 fw-normal text-body">
@@ -205,7 +219,9 @@
                                     data-bs-toggle="modal"
                                     data-bs-target="#agentStatusToggleModal"
                                     data-agent-name="{{ $agent['full_name'] }}"
-                                    data-agent-status="{{ $agent['status'] }}">
+                                    data-agent-status="{{ $agent['status'] }}"
+                                    data-activate-url="{{ route('ui.call-center.agents.activate', $agent['slug']) }}"
+                                    data-deactivate-url="{{ route('ui.call-center.agents.deactivate', $agent['slug']) }}">
                                     {{ $agent['status'] === 'active' ? 'Deactivate' : 'Activate' }}
                                 </button>
                             </div>
@@ -213,34 +229,14 @@
                     @endforeach
                 </div>
 
-                <div class="px-20">
-                    <div class="d-flex justify-content-center justify-content-sm-between align-items-center text-center flex-wrap gap-2 showing-wrap mb-4">
-                        <span class="fs-15">Showing 1 to {{ count($agents) }} of 24 entries</span>
-                        <nav class="custom-pagination" aria-label="Call Center Agents pagination">
-                            <ul class="pagination mb-0 justify-content-center">
-                                <li class="page-item disabled">
-                                    <span class="page-link icon" aria-hidden="true">
-                                        <i class="material-symbols-outlined">west</i>
-                                    </span>
-                                </li>
-                                <li class="page-item active" aria-current="page">
-                                    <span class="page-link">1</span>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#">2</a>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#">3</a>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link icon" href="#" aria-label="Next page">
-                                        <i class="material-symbols-outlined">east</i>
-                                    </a>
-                                </li>
-                            </ul>
-                        </nav>
+                @if ($agentsPaginator)
+                    <div class="px-20">
+                        @include('partials.pagination', [
+                            'paginator' => $agentsPaginator,
+                            'ariaLabel' => 'Call Center Agents pagination',
+                        ])
                     </div>
-                </div>
+                @endif
             @endif
         </div>
     </div>
@@ -280,6 +276,10 @@
                 var message = modal.querySelector('[data-status-toggle-message]');
                 var confirm = modal.querySelector('[data-status-toggle-confirm]');
                 var title = modal.querySelector('.modal-title');
+                var form = modal.querySelector('[data-status-toggle-form]');
+                var actionUrl = isActive
+                    ? trigger.getAttribute('data-deactivate-url')
+                    : trigger.getAttribute('data-activate-url');
 
                 if (title) {
                     title.textContent = isActive ? 'Deactivate agent' : 'Activate agent';
@@ -292,6 +292,9 @@
                     confirm.classList.toggle('btn-danger', isActive);
                     confirm.classList.toggle('text-white', true);
                     confirm.classList.toggle('btn-primary', !isActive);
+                }
+                if (form && actionUrl) {
+                    form.setAttribute('action', actionUrl);
                 }
             });
         });

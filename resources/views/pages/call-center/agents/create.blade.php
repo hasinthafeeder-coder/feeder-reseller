@@ -3,7 +3,8 @@
 @php
     $agent = $agent ?? null;
     $permissionCatalog = $permissionCatalog ?? [];
-    $assignedPermissions = $assignedPermissions ?? [];
+    $assignedPermissions = old('permissions', $assignedPermissions ?? []);
+    $canManagePermissions = (bool) ($canManagePermissions ?? true);
 @endphp
 
 @push('styles')
@@ -42,16 +43,14 @@
             </ol>
         </nav>
 
-        <div class="alert alert-info d-none mb-4" role="alert" data-ui-preview-notice>
-            This is a UI preview. The call center agent was not created.
-        </div>
-
-        <form action="#" method="POST" data-ui-only-form novalidate>
+        <form action="{{ route('ui.call-center.agents.store') }}" method="POST" novalidate>
+            @csrf
             @include('pages.call-center.agents.partials.form-fields', [
                 'mode' => 'create',
                 'agent' => null,
                 'permissionCatalog' => $permissionCatalog,
-                'assignedPermissions' => [],
+                'assignedPermissions' => $assignedPermissions,
+                'canManagePermissions' => $canManagePermissions,
             ])
         </form>
     </div>

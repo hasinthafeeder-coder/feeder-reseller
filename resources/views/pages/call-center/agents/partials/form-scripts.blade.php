@@ -95,4 +95,17 @@
             }
         });
     });
+
+    document.querySelectorAll('[data-edit-password-apply]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            document.querySelectorAll('[data-edit-password-source]').forEach(function (source) {
+                var key = source.getAttribute('data-edit-password-source');
+                var target = document.querySelector('[data-edit-password-target="' + key + '"]');
+
+                if (target) {
+                    target.value = source.value || '';
+                }
+            });
+        });
+    });
 })();
