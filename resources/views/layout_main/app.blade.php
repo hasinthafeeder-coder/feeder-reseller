@@ -94,8 +94,10 @@
                     </li>
 
                     @foreach ($section->getItems() as $item)
-                        <li class="menu-item">
-                            @if ($item->hasChildren())
+                        @if ($item->getTitle() === 'Orders')
+                            @include('pages.orders.partials.ui-sidebar-orders')
+                        @elseif ($item->hasChildren())
+                            <li class="menu-item">
                                 <a href="javascript:void(0);" class="menu-link menu-toggle">
                                     @if ($item->getIcon())
                                         <span class="material-symbols-outlined menu-icon">{{ $item->getIcon() }}</span>
@@ -105,25 +107,33 @@
                                 </a>
                                 <ul class="menu-sub">
                                     @foreach ($item->getChildren() as $child)
-                                        <li class="menu-item">
-                                            <a href="{{ $child->getRoute() ? route($child->getRoute()) : 'javascript:void(0);' }}"
-                                                class="menu-link">
-                                                {{ $child->getTitle() }}
-                                            </a>
-                                        </li>
+                                        @if ($child->getRoute() && Route::has($child->getRoute()))
+                                            <li class="menu-item">
+                                                <a href="{{ route($child->getRoute()) }}" class="menu-link">
+                                                    {{ $child->getTitle() }}
+                                                </a>
+                                            </li>
+                                        @elseif (! $child->getRoute())
+                                            <li class="menu-item">
+                                                <span class="menu-link">
+                                                    {{ $child->getTitle() }}
+                                                </span>
+                                            </li>
+                                        @endif
                                     @endforeach
                                 </ul>
-                            @else
-                                <a href="{{ $item->getRoute() ? route($item->getRoute()) : 'javascript:void(0);' }}"
-                                    class="menu-link">
+                            </li>
+                        @elseif ($item->getRoute() && Route::has($item->getRoute()))
+                            <li class="menu-item">
+                                <a href="{{ route($item->getRoute()) }}" class="menu-link">
                                     @if ($item->getIcon())
                                         <span class="material-symbols-outlined menu-icon">{{ $item->getIcon() }}</span>
                                     @endif
 
                                     <span class="title">{{ $item->getTitle() }}</span>
                                 </a>
-                            @endif
-                        </li>
+                            </li>
+                        @endif
                     @endforeach
                 @endforeach
 

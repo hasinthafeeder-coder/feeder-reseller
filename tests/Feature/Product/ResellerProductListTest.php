@@ -390,6 +390,13 @@ class ResellerProductListTest extends TestCase
         $unlockedCommission = ResellerProductPricing::commissionRange($variant, false);
         $this->assertSame(1350.0, $unlockedCommission['min']);
         $this->assertSame(2350.0, $unlockedCommission['max']);
+
+        $this->assertSame(2500.0, ResellerProductPricing::customerUnitPrice($variant, true, 9999.0));
+        $this->assertSame(3000.0, ResellerProductPricing::customerUnitPrice($variant, false, 3000.0));
+        $this->assertSame(1350.0, ResellerProductPricing::unitProfit($variant, 2500.0));
+        $this->assertSame(1850.0, ResellerProductPricing::unitProfit($variant, 3000.0));
+        $this->assertSame(2500.0, ResellerProductPricing::defaultCustomerUnitPrice($variant, true));
+        $this->assertSame(2500.0, ResellerProductPricing::defaultCustomerUnitPrice($variant, false));
     }
 
     private function makeResellerUser(): User
