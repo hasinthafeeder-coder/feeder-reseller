@@ -77,7 +77,6 @@ class AgentPermissionsTest extends TestCase
             ->get(route('ui.call-center.agents.show', $agent->uuid))
             ->assertOk()
             ->assertSee('View Products')
-            ->assertDontSee('View Orders')
             ->assertDontSee('View Call Center Agents')
             ->assertDontSee('call_center.agents.view');
     }
@@ -180,10 +179,12 @@ class AgentPermissionsTest extends TestCase
             ->assertSee('View Products')
             ->assertSee('View Dashboard')
             ->assertSee('View Team Structure')
+            ->assertSee('View Orders')
+            ->assertSee('Create Orders')
             ->assertSee('name="permissions[]"', false)
             ->assertSee('value="products.view"', false)
+            ->assertSee('value="orders.view"', false)
             ->assertDontSee('view_orders')
-            ->assertDontSee('View Orders')
             ->assertDontSee('View Call Center Agents')
             ->assertDontSee('call_center.agents.create');
 
@@ -191,10 +192,10 @@ class AgentPermissionsTest extends TestCase
             ->get(route('ui.call-center.agents.edit', $agent->uuid))
             ->assertOk()
             ->assertSee('View Products')
+            ->assertSee('View Orders')
             ->assertSee('Save Permissions')
             ->assertSee(route('ui.call-center.agents.permissions.update', $agent->uuid), false)
             ->assertDontSee('view_orders')
-            ->assertDontSee('View Orders')
             ->assertDontSee('View Call Center Agents');
     }
 

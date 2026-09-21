@@ -314,6 +314,69 @@ class ResellerOrderCatalogService
     }
 
     /**
+     * Resolve (or create) a global customer from phones in an allowed market, then ban.
+     *
+     * @param  array{
+     *     market_id: int,
+     *     customer_name: string,
+     *     primary_phone: string,
+     *     secondary_phone?: string|null,
+     *     reason: string
+     * }  $payload
+     * @return array{customer_id: int, is_banned: bool, ban_reason: string|null}
+     */
+    public function banCustomerByPhones(User $actor, array $payload): array
+    {
+        $marketId = (int) $payload['market_id'];
+        $allowedMarketIds = $this->marketsForReseller($actor)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        if (! in_array($marketId, $allowedMarketIds, true)) {
+            throw ValidationException::withMessages([
+                'market_id' => ['The selected market is invalid for your company.'],
+            ]);
+        }
+
+        $market = Market::query()->with('country')->find($marketId);
+        if ($market === null || $market->country === null) {
+            throw ValidationException::withMessages([
+                'market_id' => ['The selected market is invalid.'],
+            ]);
+        }
+
+        $countryId = (int) $market->country_id;
+        $secondary = trim((string) ($payload['secondary_phone'] ?? ''));
+
+        try {
+            $identity = $this->customerIdentityService->resolveOrCreate([
+                'display_name' => trim((string) $payload['customer_name']),
+                'primary_country_id' => $countryId,
+                'primary_phone' => trim((string) $payload['primary_phone']),
+                'primary_phone_country_id' => $countryId,
+                'secondary_phone' => $secondary !== '' ? $secondary : null,
+                'secondary_phone_country_id' => $secondary !== '' ? $countryId : null,
+                'created_by' => (int) $actor->id,
+            ]);
+        } catch (ConflictingCustomerIdentityException $e) {
+            throw ValidationException::withMessages([
+                'primary_phone' => ['Primary and secondary phones belong to different customers.'],
+            ]);
+        }
+
+        $ban = $this->customerBanService->ban(
+            $identity['customer'],
+            (int) $actor->id,
+            (int) $actor->company_id,
+            trim((string) $payload['reason']),
+        );
+
+        return [
+            'customer_id' => (int) $identity['customer']->id,
+            'is_banned' => true,
+            'ban_reason' => $ban->reason,
+        ];
+    }
+
+    /**
      * Preview duplicate detection using authoritative domain finder.
      *
      * @param  list<int>  $variantIds
@@ -479,7 +542,7 @@ class ResellerOrderCatalogService
     }
 
     /**
-     * @return list<array{district: string}>
+     * @return list<array{id: int, uuid: string, name: string, district: string, external_id: string}>
      */
     public function courierDistrictsForCreate(User $actor, int $marketId, int $supplierId, int $courierId): array
     {
@@ -491,7 +554,7 @@ class ResellerOrderCatalogService
     }
 
     /**
-     * @return list<array{id: int, uuid: string, city_name: string, district_name: string, external_city_code: string}>
+     * @return list<array{id: int, uuid: string, city_name: string, district_name: string, external_city_code: string, courier_state_id: int|null}>
      */
     public function courierCitiesForCreate(
         User $actor,
@@ -499,10 +562,15 @@ class ResellerOrderCatalogService
         int $supplierId,
         int $courierId,
         string $district,
+        ?int $courierStateId = null,
     ): array {
         $this->assertMarketAccess($actor, $marketId);
         $this->assertSupplierAssigned($actor, $supplierId);
         $this->courierLookupService->requireEligibleCourierForSupplierMarket($supplierId, $marketId, $courierId);
+
+        if ($courierStateId !== null && $courierStateId > 0) {
+            return $this->courierLookupService->citiesForCourierAndState($courierId, $courierStateId);
+        }
 
         return $this->courierLookupService->citiesForCourierAndDistrict($courierId, $district);
     }

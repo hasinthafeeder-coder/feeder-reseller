@@ -5,6 +5,22 @@
 @push('styles')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
+        .orders-list-prototype .pool-lock-banner {
+            border: 1px solid rgba(180, 83, 9, 0.35);
+            background: #fffbeb;
+            color: #92400e;
+            border-radius: 10px;
+            padding: 0.75rem 0.95rem;
+            margin-bottom: 1rem;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .orders-list-prototype .pool-lock-banner strong {
+            display: block;
+            margin-bottom: 0.15rem;
+        }
+
         .orders-list-prototype .prototype-banner {
             border: 1px dashed rgba(180, 83, 9, 0.45);
             background: #fffbeb;
@@ -89,6 +105,26 @@
         }
 
         .orders-list-prototype .workspace-tab.is-active .tab-count {
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .orders-list-prototype .filter-chip .tab-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.2rem;
+            height: 1.1rem;
+            padding: 0 0.3rem;
+            margin-left: 0.35rem;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            background: rgba(15, 23, 42, 0.08);
+            color: inherit;
+            vertical-align: middle;
+        }
+
+        .orders-list-prototype .filter-chip.is-active .tab-count {
             background: rgba(255, 255, 255, 0.22);
         }
 
@@ -470,7 +506,7 @@
     @elseif ($orderUiWorkspace === 'import')
         @include('pages.orders.partials.ui-import')
     @else
-        @include('pages.orders.partials.ui-list-workspace')
+        @include('pages.orders.partials.ui-list-workspace', ['bootstrap' => $bootstrap ?? []])
     @endif
     @include('pages.orders.partials.ui-scripts')
 @else

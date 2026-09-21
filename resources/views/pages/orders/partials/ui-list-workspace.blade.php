@@ -1,34 +1,67 @@
 @php
     extract(require resource_path('views/pages/orders/partials/ui-urls-data.php'));
-    extract(require resource_path('views/pages/orders/partials/ui-mock-data.php'));
 @endphp
 
 @php
     $isCallCenterList = ($orderUiWorkspace ?? '') === 'call-center';
     $listTitle = $isCallCenterList ? 'Call Center Orders' : 'Archived Orders';
     $listCopy = $isCallCenterList
-        ? 'Same Feeder order-list workspace, filtered to call-center assignment and attempt statuses.'
+        ? 'Assigned and pool orders for call-center handling within your reseller company.'
         : 'Completed, returned, and expired orders. Operational workflow still ends at Confirmed.';
     $archiveKey = $orderUiArchive ?? 'completed';
-    $orderUiListMock = [
-        'orders' => $orderUiMockOrders,
-        'ccas' => $orderUiMockCcas,
-        'suppliers' => $orderUiMockSuppliers,
-        'products' => $orderUiMockProducts,
-        'perPage' => 5,
-        'workspace' => $isCallCenterList ? 'call-center' : 'archived',
-        'archive' => $archiveKey,
-        'showUrl' => $orderUiUrls['view'],
-        'holdUrl' => $orderUiUrls['hold'],
-        'expiringUrl' => $orderUiUrls['expiring'],
-        'expiredUrl' => $orderUiUrls['expired'],
-        'confirmUrl' => $orderUiUrls['confirm'],
-    ];
+
+    if ($isCallCenterList) {
+        $orderUiListPayload = $bootstrap ?? [
+            'workspace' => 'call-center',
+            'orders' => [],
+            'ccas' => [],
+            'suppliers' => [],
+            'statuses' => [],
+            'sources' => [],
+            'counts' => ['all' => 0, 'assigned' => 0, 'unassigned' => 0, 'pool' => 0, 'my' => 0],
+            'status_counts' => ['all' => 0],
+            'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 25, 'total' => 0],
+            'filters' => [],
+            'actor' => ['role' => 'reseller', 'can_assign' => false, 'can_claim' => false, 'can_create' => false],
+            'pool_lock' => null,
+            'routes' => [
+                'index' => route('orders.index', ['workspace' => 'call-center']),
+                'show' => url('/orders'),
+                'create' => route('orders.create'),
+                'bulk_assign' => route('orders.bulk.assign'),
+                'bulk_pool' => route('orders.bulk.pool'),
+                'claim' => url('/orders'),
+            ],
+        ];
+        $orderUiListPayload['workspace'] = 'call-center';
+        $orderUiListPayload['live'] = true;
+    } else {
+        extract(require resource_path('views/pages/orders/partials/ui-mock-data.php'));
+        $orderUiListPayload = [
+            'orders' => $orderUiMockOrders,
+            'ccas' => $orderUiMockCcas,
+            'suppliers' => $orderUiMockSuppliers,
+            'products' => $orderUiMockProducts,
+            'perPage' => 5,
+            'workspace' => 'archived',
+            'archive' => $archiveKey,
+            'live' => false,
+            'showUrl' => $orderUiUrls['view'],
+            'holdUrl' => $orderUiUrls['hold'],
+            'expiringUrl' => $orderUiUrls['expiring'],
+            'expiredUrl' => $orderUiUrls['expired'],
+            'confirmUrl' => $orderUiUrls['confirm'],
+        ];
+    }
+
+    $actorCanAssign = (bool) ($orderUiListPayload['actor']['can_assign'] ?? false);
+    $actorCanCreate = (bool) ($orderUiListPayload['actor']['can_create'] ?? false);
 @endphp
 
 <div class="main-content-container overflow-hidden orders-list-prototype" id="orderUiListWorkspace"
     data-workspace="{{ $isCallCenterList ? 'call-center' : 'archived' }}"
-    data-archive="{{ $archiveKey }}">
+    data-archive="{{ $archiveKey }}"
+    data-live="{{ $isCallCenterList ? '1' : '0' }}">
     @include('pages.orders.partials.ui-page-header', [
         'orderUiPageTitle' => $listTitle,
         'orderUiPageCopy' => $listCopy,
@@ -38,18 +71,24 @@
                 ['label' => 'Archived Orders'],
                 ['label' => ucfirst($archiveKey)],
             ],
-        'orderUiPrimaryHref' => $isCallCenterList ? $orderUiUrls['create'] : null,
-        'orderUiPrimaryLabel' => $isCallCenterList ? 'Create Order' : null,
+        'orderUiPrimaryHref' => ($isCallCenterList && $actorCanCreate) ? $orderUiUrls['create'] : null,
+        'orderUiPrimaryLabel' => ($isCallCenterList && $actorCanCreate) ? 'Create Order' : null,
         'orderUiSecondaryHref' => $orderUiUrls['ongoing'],
         'orderUiSecondaryLabel' => 'Ongoing Orders',
     ])
 
-    <div class="order-ui-banner">
-        <strong>UI architecture preview</strong>
-        Counts, filters, and rows below use isolated example data. Opening View uses the existing single-order visual with a preview state — no new backend queries.
-    </div>
+    @unless ($isCallCenterList)
+        <div class="order-ui-banner">
+            <strong>UI architecture preview</strong>
+            Counts, filters, and rows below use isolated example data. Opening View uses the existing single-order visual with a preview state — no new backend queries.
+        </div>
+    @endunless
 
     <div id="orderUiListToast" class="alert alert-success prototype-toast hidden" role="status"></div>
+
+    @if ($isCallCenterList)
+        <div id="orderUiPoolLockBanner" class="pool-lock-banner hidden" role="status"></div>
+    @endif
 
     <div class="workspace-tabs" id="orderUiWorkspaceTabs" role="tablist"></div>
 
@@ -60,23 +99,12 @@
                     <span class="material-symbols-outlined">search</span>
                     <input type="search" id="orderUiSearchInput" class="form-control"
                         placeholder="Search orders by number, customer, phone, CCA..."
-                        autocomplete="off">
+                        autocomplete="off"
+                        value="{{ $isCallCenterList ? ($orderUiListPayload['filters']['search'] ?? '') : '' }}">
                 </div>
                 <button type="button" class="btn btn-primary text-white" id="orderUiSearchBtn">Search</button>
                 <button type="button" class="btn btn-light border" id="orderUiClearBtn">Clear</button>
             </div>
-
-            @if ($isCallCenterList)
-                <div class="order-ui-global-search mt-2">
-                    <div class="form-check mb-0">
-                        <input class="form-check-input" type="checkbox" id="orderUiGlobalSearch" value="1">
-                        <label class="form-check-label fs-13" for="orderUiGlobalSearch">
-                            Search global orders
-                            <span class="order-sub d-inline">Include orders placed by other resellers (view details only)</span>
-                        </label>
-                    </div>
-                </div>
-            @endif
 
             <div class="filter-chip-row" id="orderUiStatusChips" aria-label="Status filters"></div>
 
@@ -94,18 +122,16 @@
                             <option value="all">All suppliers</option>
                         </select>
                     </div>
-                    <div class="order-ui-product-filter">
-                        <label class="label" for="orderUiFilterProduct">Product</label>
-                        <div class="order-ui-autocomplete">
-                            <input type="text" id="orderUiFilterProduct" class="form-control"
-                                placeholder="Type product name or code..."
-                                autocomplete="off"
-                                role="combobox"
-                                aria-autocomplete="list"
-                                aria-expanded="false"
-                                aria-controls="orderUiProductSuggestions">
-                            <ul id="orderUiProductSuggestions" class="order-ui-autocomplete-list hidden" role="listbox"></ul>
-                        </div>
+                    <div>
+                        <label class="label" for="orderUiFilterDatePreset">Date</label>
+                        <select id="orderUiFilterDatePreset" class="form-select form-control">
+                            <option value="all">All time</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7">Last 7 Days</option>
+                            <option value="last30">Last 30 Days</option>
+                            <option value="custom">Custom</option>
+                        </select>
                     </div>
                     <div>
                         <label class="label" for="orderUiFilterDateFrom">Date from</label>
@@ -123,7 +149,7 @@
         </div>
     </div>
 
-    @if ($isCallCenterList)
+    @if ($isCallCenterList && $actorCanAssign)
         <div id="orderUiBulkToolbar" class="bulk-toolbar hidden">
             <div class="bulk-count"><span id="orderUiBulkSelectedCount">0</span> orders selected</div>
             <div class="bulk-actions">
@@ -140,12 +166,15 @@
                 <h4 class="fs-18 mb-0" id="orderUiWorkspaceTitle">{{ $listTitle }}</h4>
                 <div class="results-meta mt-1" id="orderUiResultsMeta"></div>
             </div>
+            @if ($isCallCenterList)
+                <div class="results-meta" id="orderUiUserContextMeta"></div>
+            @endif
         </div>
         <div class="p-20" id="orderUiWorkspaceContent"></div>
     </div>
 </div>
 
-@if ($isCallCenterList)
+@if ($isCallCenterList && $actorCanAssign)
     <div id="orderUiBulkAssignModal" class="orders-proto-modal modal-backdrop-proto hidden" role="dialog" aria-modal="true" aria-labelledby="orderUiBulkAssignModalTitle">
         <div class="modal-panel-proto">
             <div class="modal-head">
@@ -153,7 +182,7 @@
             </div>
             <div class="modal-body">
                 <p class="fs-14 text-body mb-2">
-                    Choose a CCA for the selected orders. This action is visual only on this pass.
+                    Choose a CCA for the selected currently unassigned orders.
                 </p>
                 <ul class="selected-order-list" id="orderUiBulkAssignOrderList"></ul>
                 <div class="mt-3">
@@ -175,7 +204,7 @@
             </div>
             <div class="modal-body">
                 <p class="fs-14 text-body mb-2">
-                    Selected orders will become available for any eligible CCA to claim. Visual only on this pass.
+                    Selected unassigned orders will become available for any eligible CCA to claim.
                 </p>
                 <ul class="selected-order-list" id="orderUiBulkPoolOrderList"></ul>
             </div>
@@ -187,4 +216,4 @@
     </div>
 @endif
 
-<script type="application/json" id="orderUiListMock">@json($orderUiListMock)</script>
+<script type="application/json" id="orderUiListMock">@json($orderUiListPayload)</script>

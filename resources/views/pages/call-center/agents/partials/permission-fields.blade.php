@@ -8,7 +8,7 @@
 @if ($permissionCatalog === [] || $permissionCatalog === null)
     <p class="fs-14 text-muted mb-0">
         No operational permissions are defined for Call Center Agents yet.
-        Order-specific permissions will appear here when the Order module defines them.
+        Grantable permissions appear here once they are allowlisted for Agents.
     </p>
 @else
     <div class="row g-3">

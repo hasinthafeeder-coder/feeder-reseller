@@ -3,8 +3,11 @@
 @php extract(require resource_path('views/pages/orders/partials/ui-urls-data.php')); @endphp
 
 @php
+    use Feeder\Core\Enums\OrderAssignmentState;
+    use Feeder\Core\Enums\OrderSource;
     use Feeder\Core\Enums\OrderStatus;
     use Feeder\Core\Support\CurrencyDisplay;
+    use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 
     $order = $order;
     $currency = $order->currency ?? $order->market?->currency;
@@ -18,10 +21,26 @@
         ? $order->status->label()
         : (string) $order->status;
 
+    $assignmentState = $order->assignmentState();
     $ccaName = trim(($order->cca?->profile?->first_name ?? '').' '.($order->cca?->profile?->last_name ?? ''));
     if ($ccaName === '') {
         $ccaName = $order->cca?->phone ?? '—';
     }
+    $ccaDisplay = match ($assignmentState) {
+        OrderAssignmentState::POOL => 'Order Pool',
+        OrderAssignmentState::UNASSIGNED => 'Unassigned',
+        default => $ccaName,
+    };
+
+    $sourceEnum = $order->source instanceof OrderSource
+        ? $order->source
+        : OrderSource::tryFrom((string) $order->source);
+    $sourceLabel = $sourceEnum?->label() ?? (string) ($order->source ?? '—');
+    $sourceIsMeta = $sourceEnum === OrderSource::META_IMPORT;
+
+    $createdAtDisplay = optional($order->created_at)->format('M j, Y · g:i A') ?? '—';
+    $marketDisplay = $order->market?->name ?? ($order->market_code_snapshot ?: '—');
+    $supplierDisplay = $order->supplier?->company?->name ?? '—';
 
     $displayActor = static function ($user): string {
         if ($user === null) {
@@ -33,12 +52,24 @@
         return $name !== '' ? $name : ($user->phone ?? $user->email ?? 'User #'.$user->id);
     };
 
-    $canUpdateStatus = auth()->user()?->hasPermission('orders.status.update');
-    $canAssignCca = auth()->user()?->hasPermission('orders.cca.assign');
-    $canComment = auth()->user()?->hasPermission('orders.comments.create');
-    $canUpdateDiscount = auth()->user()?->hasPermission('orders.discount.update');
-    $canBookShipment = $canBookShipment ?? false;
+    $authUser = auth()->user();
+    $isCcaActor = $authUser !== null
+        && app(CallCenterAgentEligibilityService::class)->isEligible($authUser, (int) $authUser->company_id);
+    $isAssignedToActor = $authUser !== null && (int) $order->cca_id === (int) $authUser->id;
+    $orderInPool = $order->isInOrderPool();
+
+    $canUpdateStatus = $authUser?->hasPermission('orders.status.update')
+        && (! $isCcaActor || $isAssignedToActor);
+    $canAssignCca = ! $isCcaActor && $authUser?->hasPermission('orders.cca.assign');
+    $canComment = $authUser?->hasPermission('orders.comments.create')
+        && (! $isCcaActor || $isAssignedToActor);
+    $canUpdateDiscount = ! $isCcaActor && $authUser?->hasPermission('orders.discount.update');
+    $canClaimFromPool = $isCcaActor
+        && $orderInPool
+        && $authUser?->hasPermission('orders.update');
+    $canBookShipment = ($canBookShipment ?? false) && ! $isCcaActor;
     $eligibleCouriers = $eligibleCouriers ?? [];
+    $canEditOrder = (bool) ($canEditOrder ?? false);
     $discountLocked = $order->isDiscountLocked();
     $isCancelled = $order->isCancelled();
     $shipment = $order->shipment;
@@ -61,10 +92,122 @@
 
 @push('styles')
     @include('pages.orders.partials.ui-styles')
+    @if ($canEditOrder ?? false)
+        @include('pages.orders.partials.ui-manual-order-styles')
+    @endif
+    <style>
+        .order-show-meta {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 1rem 1.5rem;
+            align-items: start;
+        }
+
+        .order-show-meta-item {
+            min-width: 0;
+        }
+
+        .order-show-meta-label {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            margin-bottom: 0.35rem;
+            line-height: 1.2;
+        }
+
+        .order-show-meta-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0f172a;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+
+        .order-show-meta-value .badge-source {
+            display: inline-flex;
+            align-items: center;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 0.28rem 0.55rem;
+            border-radius: 4px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .order-show-meta-value .badge-source.is-manual {
+            background: #e9ecef;
+            color: #41464b;
+        }
+
+        .order-show-meta-value .badge-source.is-meta {
+            background: rgba(239, 73, 35, 0.1);
+            color: #c0391a;
+        }
+
+        .order-show-meta-value.is-muted {
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .order-status-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+        }
+
+        .order-status-action-btn {
+            border: 1px solid rgba(15, 23, 42, 0.12);
+            background: #f8fafc;
+            color: #334155;
+            font-weight: 600;
+            line-height: 1.2;
+            padding: 0.45rem 0.75rem;
+        }
+
+        .order-status-action-btn:hover:not(:disabled) {
+            background: #fff;
+            border-color: rgba(239, 73, 35, 0.45);
+            color: #ef4923;
+        }
+
+        .order-status-action-btn.is-current,
+        .order-status-action-btn:disabled.is-current {
+            background: #ef4923;
+            border-color: #ef4923;
+            color: #fff;
+            opacity: 1;
+        }
+
+        .order-payment-bank-fields.hidden {
+            display: none !important;
+        }
+
+        .order-payment-bank-fields {
+            margin-top: 0.85rem;
+            padding-top: 0.85rem;
+            border-top: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        @media (max-width: 991.98px) {
+            .order-show-meta {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .order-show-meta {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+    </style>
 @endpush
 
 @section('content')
-    <div class="main-content-container overflow-hidden">
+    <div class="main-content-container overflow-hidden {{ ($canEditOrder ?? false) ? 'order-create-prototype' : '' }}">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-2 mt-1">
             <div>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
@@ -78,11 +221,13 @@
                         </span>
                     @endif
                 </div>
-                <p class="fs-15 text-body mb-0">
-                    Operational order workspace for call-center and reseller actions.
-                </p>
+                @unless ($canEditOrder ?? false)
+                    <p class="fs-15 text-body mb-0">
+                        Operational order workspace for call-center and reseller actions.
+                    </p>
+                @endunless
             </div>
-            <a href="{{ route('orders.index') }}" class="btn btn-light border">Back to Orders</a>
+            <a href="{{ route('orders.index', ['workspace' => 'call-center']) }}" class="btn btn-light border">Back to Call Center</a>
         </div>
 
         <nav aria-label="breadcrumb" class="mb-4">
@@ -94,8 +239,8 @@
                     </a>
                 </li>
                 <li class="breadcrumb-item">
-                    <a href="{{ route('orders.index') }}" class="text-decoration-none">
-                        <span class="text-body fs-14 hover">Orders</span>
+                    <a href="{{ route('orders.index', ['workspace' => 'call-center']) }}" class="text-decoration-none">
+                        <span class="text-body fs-14 hover">Call Center Orders</span>
                     </a>
                 </li>
                 <li class="breadcrumb-item active" aria-current="page">
@@ -147,60 +292,65 @@
         {{-- Header meta --}}
         <div class="card bg-white rounded-10 border border-white mb-4">
             <div class="p-20">
-                <div class="row g-3">
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">Status</div>
-                        <div class="fw-medium">{{ $statusLabel }}</div>
-                    </div>
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">Source</div>
-                        <div class="fw-medium">{{ $order->source?->label() ?? $order->source }}</div>
-                    </div>
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">Created</div>
-                        <div class="fw-medium">{{ optional($order->created_at)->format('Y-m-d H:i') ?? '—' }}</div>
-                    </div>
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">Market</div>
-                        <div class="fw-medium">{{ $order->market?->name ?? $order->market_code_snapshot }}</div>
-                    </div>
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">Supplier</div>
-                        <div class="fw-medium">{{ $order->supplier?->company?->name ?? '—' }}</div>
-                    </div>
-                    <div class="col-6 col-md-4 col-lg-2">
-                        <div class="fs-13 text-body mb-1">CCA</div>
-                        <div class="fw-medium">{{ $ccaName }}</div>
-                    </div>
-                    <div class="col-12 col-md-6 col-lg-4">
-                        <div class="fs-13 text-body mb-1">Customer</div>
-                        <div class="fw-medium">{{ $order->customer_name_snapshot }}</div>
-                    </div>
-                    @if ($order->cancelled_at)
-                        <div class="col-6 col-md-4 col-lg-2">
-                            <div class="fs-13 text-body mb-1">Cancelled at</div>
-                            <div class="fw-medium">{{ $order->cancelled_at->format('Y-m-d H:i') }}</div>
+                <div class="order-show-meta" aria-label="Order details">
+                    <div class="order-show-meta-item">
+                        <div class="order-show-meta-label">Source</div>
+                        <div class="order-show-meta-value">
+                            <span class="badge-source {{ $sourceIsMeta ? 'is-meta' : 'is-manual' }}">
+                                {{ $sourceLabel }}
+                            </span>
                         </div>
-                    @endif
-                    @if ($order->reactivated_at)
-                        <div class="col-6 col-md-4 col-lg-2">
-                            <div class="fs-13 text-body mb-1">Reactivated at</div>
-                            <div class="fw-medium">{{ $order->reactivated_at->format('Y-m-d H:i') }}</div>
+                    </div>
+                    <div class="order-show-meta-item">
+                        <div class="order-show-meta-label">Created</div>
+                        <div class="order-show-meta-value">{{ $createdAtDisplay }}</div>
+                    </div>
+                    <div class="order-show-meta-item">
+                        <div class="order-show-meta-label">Market</div>
+                        <div class="order-show-meta-value">{{ $marketDisplay }}</div>
+                    </div>
+                    <div class="order-show-meta-item">
+                        <div class="order-show-meta-label">Supplier</div>
+                        <div class="order-show-meta-value">{{ $supplierDisplay }}</div>
+                    </div>
+                    <div class="order-show-meta-item">
+                        <div class="order-show-meta-label">CCA</div>
+                        <div class="order-show-meta-value {{ $assignmentState !== OrderAssignmentState::ASSIGNED ? 'is-muted' : '' }}">
+                            {{ $ccaDisplay }}
                         </div>
-                    @endif
+                    </div>
                 </div>
             </div>
         </div>
 
+        @if ($canEditOrder)
+            @include('pages.orders.partials.ui-manual-order-form', [
+                'orderFormMode' => 'edit',
+                'formDefaults' => $editFormDefaults ?? [],
+                'formAction' => $catalogRoutes['update'] ?? route('orders.update', $order),
+                'catalogRoutes' => $catalogRoutes ?? [],
+                'canBanCustomer' => $canBanCustomer ?? false,
+                'canAssignCourier' => $canAssignCourier ?? false,
+                'shipmentBootstrap' => $shipmentBootstrap ?? null,
+                'canSubmitBankTransfer' => $authUser?->hasPermission('orders.update')
+                    && (! $isCcaActor || $isAssignedToActor)
+                    && ! $isCancelled,
+            ])
+
+        @else
         <div class="row g-4">
             <div class="col-12 col-xl-8">
                 {{-- Customer --}}
                 <div class="card bg-white rounded-10 border border-white mb-4">
                     <div class="p-20 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <h4 class="fs-18 mb-0">Customer</h4>
-                        <button type="button" class="btn btn-sm btn-outline-danger" data-open-order-ui-modal="banUserModal">
-                            Ban this User
-                        </button>
+                        @if ($order->customer?->is_banned)
+                            <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-10 fs-13">Banned</span>
+                        @elseif ($canBanCustomer ?? false)
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-open-order-ui-modal="banUserModal">
+                                Ban this Customer
+                            </button>
+                        @endif
                     </div>
                     <div class="p-20">
                         @if ($order->customer?->is_banned)
@@ -246,6 +396,8 @@
                         </div>
                     </div>
                 </div>
+
+                @include('pages.orders.partials.ui-order-status-actions')
 
                 <div class="card bg-white rounded-10 border border-white mb-4">
                     <div class="p-20 border-bottom py-3">
@@ -301,60 +453,6 @@
                     </div>
                 </div>
 
-                {{-- Comments --}}
-                <div class="card bg-white rounded-10 border border-white mb-4">
-                    <div class="p-20 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <h4 class="fs-18 mb-0">Comments / Activity</h4>
-                    </div>
-                    <div class="p-20">
-                        @if ($canComment)
-                            <form method="POST" action="{{ route('orders.comments.store', $order) }}" class="mb-4">
-                                @csrf
-                                <div class="row g-3 align-items-end">
-                                    <div class="col-md-3">
-                                        <label for="commentContext" class="label fs-14 mb-2">Context</label>
-                                        <select class="form-select form-control" id="commentContext" name="context_type" required>
-                                            @foreach ($commentContextOptions as $option)
-                                                <option value="{{ $option['value'] }}" @selected(old('context_type', 'ORDER') === $option['value'])>
-                                                    {{ $option['label'] }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="col-md-7">
-                                        <label for="commentBody" class="label fs-14 mb-2">Comment</label>
-                                        <input type="text" class="form-control" id="commentBody" name="body"
-                                            value="{{ old('body') }}" maxlength="5000" required
-                                            placeholder="Add an operational note">
-                                    </div>
-                                    <div class="col-md-2">
-                                        <button type="submit" class="btn btn-primary text-white w-100">Add</button>
-                                    </div>
-                                </div>
-                            </form>
-                        @endif
-
-                        @forelse ($order->comments as $comment)
-                            <div class="@if (! $loop->last) border-bottom pb-3 mb-3 @endif">
-                                <div class="d-flex justify-content-between flex-wrap gap-2 mb-1">
-                                    <div class="fw-medium">
-                                        {{ $displayActor($comment->authorUser) }}
-                                        <span class="badge bg-light text-body border ms-1">
-                                            {{ $comment->context_type?->label() ?? $comment->context_type }}
-                                        </span>
-                                    </div>
-                                    <div class="fs-13 text-body">
-                                        {{ optional($comment->created_at)->format('Y-m-d H:i') }}
-                                    </div>
-                                </div>
-                                <div class="text-body">{{ $comment->body }}</div>
-                            </div>
-                        @empty
-                            <div class="text-body">No comments yet.</div>
-                        @endforelse
-                    </div>
-                </div>
-
                 <div class="card bg-white rounded-10 border border-white mb-4">
                     <div class="p-20 border-bottom">
                         <h4 class="fs-18 mb-0">Order Timeline</h4>
@@ -386,14 +484,6 @@
                                             · {{ $history->reason }}
                                         @endif
                                     </p>
-                                </li>
-                            @endforeach
-                            @foreach ($order->comments as $comment)
-                                <li class="order-timeline-item">
-                                    <span class="order-timeline-dot type-courier"></span>
-                                    <div class="order-timeline-time">{{ optional($comment->created_at)->format('Y-m-d H:i') }} · {{ $displayActor($comment->authorUser) }}</div>
-                                    <div class="order-timeline-title">Note</div>
-                                    <p class="order-timeline-desc">{{ $comment->body }}</p>
                                 </li>
                             @endforeach
                         </ul>
@@ -498,26 +588,16 @@
                     </div>
                 </div>
 
-                <div class="card bg-white rounded-10 border border-white mb-4">
-                    <div class="p-20 border-bottom">
-                        <h4 class="fs-18 mb-0">Payment</h4>
-                    </div>
-                    <div class="p-20">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="ui_payment_method" id="showPayCod" value="cod" checked disabled>
-                            <label class="form-check-label fs-14" for="showPayCod">Cash on delivery</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="ui_payment_method" id="showPayBank" value="bank" disabled>
-                            <label class="form-check-label fs-14" for="showPayBank">Bank transfer</label>
-                        </div>
-                        <div class="form-check mb-0">
-                            <input class="form-check-input" type="radio" name="ui_payment_method" id="showPayGateway" value="gateway" disabled>
-                            <label class="form-check-label fs-14" for="showPayGateway">Online gateway</label>
-                        </div>
-                        <p class="fs-13 text-body mb-0 mt-3">Payment is visual structure only. No payment is processed from this screen.</p>
-                    </div>
-                </div>
+                @include('pages.orders.partials.ui-order-payment', [
+                    'canSubmitBankTransfer' => $authUser?->hasPermission('orders.update')
+                        && (! $isCcaActor || $isAssignedToActor)
+                        && ! $isCancelled,
+                ])
+
+                @include('pages.orders.partials.ui-order-cca-assignment', [
+                    'fieldIdPrefix' => 'showCca',
+                    'ccaName' => $ccaDisplay,
+                ])
 
                 @if ($isHoldStatus)
                     <div class="card bg-white rounded-10 border border-white mb-4">
@@ -626,7 +706,7 @@
                                     </select>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="shipmentDistrict" class="label fs-14 mb-2">District</label>
+                                    <label for="shipmentDistrict" class="label fs-14 mb-2">Destination State / District</label>
                                     <select class="form-select form-control" id="shipmentDistrict" name="district" required disabled>
                                         <option value="">Select district</option>
                                     </select>
@@ -660,134 +740,70 @@
                         @endif
                     </div>
                 </div>
-
-                {{-- Status change --}}
-                @if ($canUpdateStatus)
-                    <div class="card bg-white rounded-10 border border-white mb-4">
-                        <div class="p-20 border-bottom">
-                            <h4 class="fs-18 mb-0">
-                                @if ($isCancelled)
-                                    Reactivate / Change Status
-                                @else
-                                    Change Status
-                                @endif
-                            </h4>
-                        </div>
-                        <div class="p-20">
-                            @if ($isCancelled && ! $canReactivate)
-                                <div class="alert alert-danger mb-0" role="alert">
-                                    This cancelled order is outside the operational window and cannot be reactivated.
-                                </div>
-                            @else
-                                <form method="POST" action="{{ route('orders.status.update', $order) }}">
-                                    @csrf
-                                    <div class="mb-3">
-                                        <label for="orderStatus" class="label fs-14 mb-2">Target status</label>
-                                        <select class="form-select form-control" id="orderStatus" name="status" required>
-                                            @php
-                                                $options = $isCancelled ? $reactivationStatusOptions : $statusOptions;
-                                            @endphp
-                                            @foreach ($options as $option)
-                                                <option value="{{ $option['value'] }}"
-                                                    @selected(old('status') === $option['value'])>
-                                                    {{ $option['label'] }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="statusReason" class="label fs-14 mb-2">Reason / note (optional)</label>
-                                        <input type="text" class="form-control" id="statusReason" name="reason"
-                                            value="{{ old('reason') }}" maxlength="1000">
-                                    </div>
-                                    <button type="submit" class="btn btn-primary text-white w-100">
-                                        @if ($isCancelled)
-                                            Reactivate
-                                        @else
-                                            Update Status
-                                        @endif
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
-                @endif
-
-                {{-- CCA assignment --}}
-                <div class="card bg-white rounded-10 border border-white mb-4">
-                    <div class="p-20 border-bottom">
-                        <h4 class="fs-18 mb-0">CCA Assignment</h4>
-                    </div>
-                    <div class="p-20">
-                        <div class="mb-3">
-                            <div class="fs-13 text-body mb-1">Current CCA</div>
-                            <div class="fw-medium">{{ $ccaName }}</div>
-                        </div>
-
-                        <button type="button" class="btn btn-light border w-100 mb-4" data-open-order-ui-modal="callCenterAssignModal">
-                            Send to Call Center
-                        </button>
-
-                        @if ($canAssignCca)
-                            <form method="POST" action="{{ route('orders.cca.assign', $order) }}" class="mb-4">
-                                @csrf
-                                <div class="mb-3">
-                                    <label for="ccaId" class="label fs-14 mb-2">Assign / reassign CCA</label>
-                                    <select class="form-select form-control" id="ccaId" name="cca_id" required>
-                                        <option value="">Select CCA</option>
-                                        @foreach ($eligibleCcas as $cca)
-                                            <option value="{{ $cca['id'] }}"
-                                                @selected((string) old('cca_id', $order->cca_id) === (string) $cca['id'])>
-                                                {{ $cca['name'] }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="ccaNote" class="label fs-14 mb-2">Note (optional)</label>
-                                    <input type="text" class="form-control" id="ccaNote" name="note"
-                                        value="{{ old('note') }}" maxlength="1000">
-                                </div>
-                                <button type="submit" class="btn btn-outline-primary w-100">Assign CCA</button>
-                            </form>
-                        @endif
-
-                        <div class="fs-14 fw-medium mb-2">Assignment history</div>
-                        @forelse ($order->ccaAssignments as $assignment)
-                            <div class="@if (! $loop->last) border-bottom pb-2 mb-2 @endif fs-13">
-                                <div class="fw-medium">{{ $displayActor($assignment->cca) }}</div>
-                                <div class="text-body">
-                                    Assigned {{ optional($assignment->assigned_at)->format('Y-m-d H:i') ?? '—' }}
-                                    @if ($assignment->assignedByUser)
-                                        by {{ $displayActor($assignment->assignedByUser) }}
-                                    @endif
-                                </div>
-                                @if ($assignment->unassigned_at)
-                                    <div class="text-body">
-                                        Replaced {{ $assignment->unassigned_at->format('Y-m-d H:i') }}
-                                    </div>
-                                @endif
-                            </div>
-                        @empty
-                            <div class="text-body fs-13">No CCA assignments yet.</div>
-                        @endforelse
-                    </div>
-                </div>
             </div>
         </div>
+        @endif
     </div>
 
-    @include('pages.orders.partials.ui-ban-modal', [
-        'banName' => $order->customer_name_snapshot,
-        'banPhone1' => $order->primary_phone_snapshot,
-        'banPhone2' => $order->secondary_phone_snapshot,
+    @unless ($canEditOrder)
+        @include('pages.orders.partials.ui-ban-modal', [
+            'banName' => $order->customer_name_snapshot,
+            'banPhone1' => $order->primary_phone_snapshot,
+            'banPhone2' => $order->secondary_phone_snapshot,
+            'banUrl' => ($canBanCustomer ?? false) ? route('orders.customer.ban', $order) : '',
+            'banMode' => 'order',
+        ])
+    @endunless
+    @if ($canEditOrder && $canUpdateStatus && ! ($isCancelled && ! $canReactivate))
+        @include('pages.orders.partials.ui-order-status-confirm-modal', [
+            'order' => $order,
+            'currentStatusLabel' => $order->status instanceof \Feeder\Core\Enums\OrderStatus
+                ? $order->status->label()
+                : (string) ($order->status ?? '—'),
+        ])
+    @endif
+    @include('pages.orders.partials.ui-call-center-modal', [
+        'poolConfirm' => [
+            'orderNumber' => $order->order_number,
+            'status' => $statusLabel,
+            'currentCca' => $ccaDisplay,
+            'customer' => $order->customer_name_snapshot,
+            'phone' => $order->primary_phone_snapshot,
+        ],
+        'poolActionUrl' => $canAssignCca ? route('orders.cca.pool', $order) : null,
     ])
-    @include('pages.orders.partials.ui-call-center-modal')
     <div id="orderUiToast" class="alert alert-success prototype-toast hidden" role="status"></div>
 @endsection
 
 @push('scripts')
+    @if ($canEditOrder)
+        @include('pages.orders.partials.ui-manual-order-scripts', [
+            'orderFormMode' => 'edit',
+            'formDefaults' => $editFormDefaults ?? [],
+            'formEligibleCcas' => $formEligibleCcas ?? collect(),
+            'markets' => $markets ?? collect(),
+            'isCca' => $isCca ?? false,
+            'catalogRoutes' => $catalogRoutes ?? [],
+            'duplicateOrders' => $duplicateOrders ?? [],
+            'oldItems' => $oldItems ?? [],
+            'canAssignCourier' => $canAssignCourier ?? false,
+            'shipmentBootstrap' => $shipmentBootstrap ?? null,
+        ])
+    @endif
     @include('pages.orders.partials.ui-scripts')
+    <script>
+    (function () {
+        var fields = document.getElementById('orderBankTransferFields');
+        if (!fields) return;
+
+        document.querySelectorAll('[data-order-payment-method]').forEach(function (input) {
+            input.addEventListener('change', function () {
+                var isBank = input.value === 'bank' && input.checked;
+                fields.classList.toggle('hidden', !isBank);
+            });
+        });
+    })();
+    </script>
 @endpush
 
 @if (! $shipmentBooked && $canBookShipment)
@@ -941,9 +957,12 @@
         resetSelect(districtSelect, 'Select district', true);
         districts.forEach((row) => {
             const option = document.createElement('option');
-            option.value = row.district;
-            option.textContent = row.district;
-            if (selectedDistrict && selectedDistrict === row.district) {
+            const stateId = row.id && Number(row.id) > 0 ? String(row.id) : '';
+            const name = row.name || row.district || '';
+            option.value = stateId || name;
+            option.textContent = name;
+            option.dataset.name = name;
+            if (selectedDistrict && (selectedDistrict === name || selectedDistrict === stateId)) {
                 option.selected = true;
             }
             districtSelect.appendChild(option);
@@ -951,19 +970,24 @@
         updateBookButton();
     }
 
-    async function loadCities(serviceId, district, selectedCityId) {
+    async function loadCities(serviceId, stateIdOrDistrict, selectedCityId) {
         resetSelect(citySelect, 'Select city', false);
         updateBookButton();
 
-        if (!serviceId || !district) {
+        if (!serviceId || !stateIdOrDistrict) {
             return;
         }
 
-        const cities = await fetchJson(
-            @json(route('orders.courier-cities', $order))
-            + '?courier_service_id=' + encodeURIComponent(serviceId)
-            + '&district=' + encodeURIComponent(district)
-        );
+        let url = @json(route('orders.courier-cities', $order))
+            + '?courier_service_id=' + encodeURIComponent(serviceId);
+        const numericStateId = Number(stateIdOrDistrict);
+        if (Number.isInteger(numericStateId) && numericStateId > 0) {
+            url += '&courier_state_id=' + encodeURIComponent(numericStateId);
+        } else {
+            url += '&district=' + encodeURIComponent(stateIdOrDistrict);
+        }
+
+        const cities = await fetchJson(url);
 
         resetSelect(citySelect, 'Select city', true);
         cities.forEach((city) => {

@@ -141,6 +141,11 @@ class ResellerOrderPoolIntegrationTest extends TestCase
         $this->assertSame(1, $counts['unassigned']);
         $this->assertSame(1, $counts['pool']);
 
+        $statusCounts = $response->json('data.status_counts');
+        $this->assertSame(3, $statusCounts['all']);
+        $this->assertSame(3, $statusCounts['PENDING']);
+        $this->assertSame(0, $statusCounts['CONFIRMED']);
+
         $this->actingAs($cca)
             ->get(route('orders.index', ['tab' => 'company']))
             ->assertOk()

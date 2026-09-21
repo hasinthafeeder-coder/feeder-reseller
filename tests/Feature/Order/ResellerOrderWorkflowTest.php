@@ -199,6 +199,41 @@ class ResellerOrderWorkflowTest extends TestCase
         $this->assertSame(OrderStatus::CANCELLED, $order->fresh()->status);
     }
 
+    public function test_ban_customer_from_order_requires_permission_and_persists_ban(): void
+    {
+        $viewer = $this->makeResellerWithPermission(['orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($viewer, $supplier);
+        $order = $this->makeOrder($viewer, $supplier, $this->makeVariant($supplier));
+
+        $this->actingAs($viewer)
+            ->postJson(route('orders.customer.ban', $order), [
+                'reason' => 'Repeat return fraud',
+            ])
+            ->assertForbidden();
+
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'customers.bans.create',
+        ], $viewer->company);
+
+        $this->actingAs($actor)
+            ->postJson(route('orders.customer.ban', $order), [
+                'reason' => 'Repeat return fraud',
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Customer banned successfully.')
+            ->assertJsonPath('data.is_banned', true);
+
+        $this->assertTrue((bool) $order->fresh()->customer->is_banned);
+
+        $this->actingAs($actor)
+            ->postJson(route('orders.customer.ban', $order), [
+                'reason' => 'Try again',
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_cca_assign_permission_and_eligibility(): void
     {
         $actor = $this->makeResellerWithPermission(['orders.view']);

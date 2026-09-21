@@ -64,6 +64,33 @@ class ResellerOrderListService
     }
 
     /**
+     * Status counts for the current list filters (tab / search / CCA / supplier / date),
+     * excluding the selected status chip so every chip keeps a meaningful total.
+     *
+     * Keys match status filter option values (enum values) plus "all".
+     *
+     * @return array<string, int>
+     */
+    public function statusCounts(User $actor, Request $request): array
+    {
+        $rows = $this->filteredQuery($actor, $request, ignoreStatus: true)
+            ->toBase()
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $counts = ['all' => 0];
+
+        foreach (OrderStatus::cases() as $status) {
+            $count = (int) ($rows[$status->value] ?? 0);
+            $counts[$status->value] = $count;
+            $counts['all'] += $count;
+        }
+
+        return $counts;
+    }
+
+    /**
      * @return array{
      *     search: string,
      *     order_number: string,
@@ -108,27 +135,51 @@ class ResellerOrderListService
     {
         $actor->loadMissing(['profile', 'company', 'role']);
         $isCca = $this->ccaEligibilityService->isEligible($actor, (int) $actor->company_id);
+        $workspace = trim((string) $request->input('workspace', ''));
+        $isCallCenterWorkspace = $workspace === 'call-center';
+
+        // Call Center defaults: CCA lands on Assigned filtered to self; owners see All.
+        if ($isCallCenterWorkspace && ! $request->filled('tab') && ! $request->filled('assignment')) {
+            $request->merge([
+                'tab' => $isCca ? 'assigned' : 'all',
+            ]);
+        }
+
+        if ($isCallCenterWorkspace && $isCca && ! $request->exists('cca_id')) {
+            $request->merge([
+                'cca_id' => (string) $actor->id,
+            ]);
+        }
+
         $orders = $this->paginate($actor, $request);
         $filters = $this->activeFilters($request);
         $counts = $this->assignmentCounts($actor);
+        $statusCounts = $this->statusCounts($actor, $request);
         $blocking = $isCca
             ? $this->ccaAssignmentService->blockingActivePoolClaim($actor, (int) $actor->company_id)
             : null;
 
         $name = trim(($actor->profile?->first_name ?? '').' '.($actor->profile?->last_name ?? ''));
+        $canAssign = ! $isCca && $actor->hasPermission('orders.cca.assign');
+
+        $indexParams = $isCallCenterWorkspace ? ['workspace' => 'call-center'] : [];
 
         return [
+            'workspace' => $isCallCenterWorkspace ? 'call-center' : 'ongoing',
             'actor' => [
                 'id' => (int) $actor->id,
                 'role' => $isCca ? 'cca' : 'reseller',
                 'name' => $name !== '' ? $name : ($actor->phone ?? 'User #'.$actor->id),
                 'company' => $actor->company?->name ?? 'Company',
-                'can_assign' => $actor->hasPermission('orders.cca.assign'),
+                'can_assign' => $canAssign,
                 'can_claim' => $isCca && $actor->hasPermission('orders.update'),
                 'can_create' => $actor->hasPermission('orders.create'),
+                'can_update_status' => $actor->hasPermission('orders.status.update'),
+                'can_update_discount' => ! $isCca && $actor->hasPermission('orders.discount.update'),
             ],
             'filters' => $filters,
             'counts' => $counts,
+            'status_counts' => $statusCounts,
             'pagination' => [
                 'current_page' => $orders->currentPage(),
                 'last_page' => $orders->lastPage(),
@@ -136,7 +187,7 @@ class ResellerOrderListService
                 'total' => $orders->total(),
             ],
             'orders' => $orders->getCollection()
-                ->map(fn (Order $order) => $this->serializeOrder($order, $actor))
+                ->map(fn (Order $order) => $this->serializeOrder($order, $actor, $isCallCenterWorkspace))
                 ->values()
                 ->all(),
             'ccas' => $this->ccaFilterOptions($actor)->all(),
@@ -149,10 +200,11 @@ class ResellerOrderListService
                 'order_number' => $blocking->order?->order_number,
             ],
             'routes' => [
-                'index' => route('orders.index'),
+                'index' => route('orders.index', $indexParams),
                 'show' => url('/orders'),
                 'create' => route('orders.create'),
                 'bulk_assign' => route('orders.bulk.assign'),
+                'bulk_assign_random' => route('orders.bulk.assign-random'),
                 'bulk_pool' => route('orders.bulk.pool'),
                 'bulk_unassign' => route('orders.bulk.unassign'),
                 'claim' => url('/orders'),
@@ -163,7 +215,7 @@ class ResellerOrderListService
     /**
      * @return array<string, mixed>
      */
-    public function serializeOrder(Order $order, User $actor): array
+    public function serializeOrder(Order $order, User $actor, bool $forCallCenterWorkspace = false): array
     {
         $order->loadMissing([
             'supplier.company',
@@ -172,6 +224,7 @@ class ResellerOrderListService
             'items',
             'creator.role',
             'shipment.courier',
+            'address',
             'ccaAssignments' => fn ($query) => $query->whereNull('unassigned_at')->latest('id'),
         ]);
 
@@ -202,13 +255,39 @@ class ResellerOrderListService
             $createdByRole = 'reseller';
         }
 
+        $firstItem = $order->items->first();
+        $itemName = $firstItem?->product_name_snapshot
+            ?? $firstItem?->variant_name_snapshot
+            ?? null;
+        if ($itemName && $order->items->count() > 1) {
+            $itemName .= ' +'.($order->items->count() - 1).' more';
+        }
+
+        $address = collect([
+            $order->address?->line1,
+            $order->address?->line2,
+            $order->address?->city_name,
+            $order->address?->district_name,
+        ])->filter()->implode(', ');
+        if ($address === '' && $order->address?->full_address_text) {
+            $address = (string) $order->address->full_address_text;
+        }
+
+        $statusValue = strtolower($order->status instanceof OrderStatus
+            ? $order->status->value
+            : (string) $order->status);
+
         return [
             'id' => (int) $order->id,
             'uuid' => (string) $order->uuid,
             'orderNumber' => (string) $order->order_number,
             'customerName' => (string) $order->customer_name_snapshot,
             'customerPhone' => (string) $order->primary_phone_snapshot,
-            'itemCount' => $order->items->sum('quantity'),
+            'secondaryPhone' => (string) ($order->secondary_phone_snapshot ?? ''),
+            'address' => $address,
+            'itemCount' => (int) $order->items->sum('quantity'),
+            'itemCode' => (string) ($firstItem?->barcode_snapshot ?? ''),
+            'itemName' => (string) ($itemName ?? ''),
             'amount' => (float) $order->customer_payable_amount,
             'currency' => (string) ($order->currency_code_snapshot ?: $order->market?->currency?->iso_code ?: ''),
             'source' => strtolower($order->source instanceof OrderSource
@@ -220,9 +299,7 @@ class ResellerOrderListService
             'ccaName' => $ccaName,
             'supplierId' => (int) $order->supplier_id,
             'supplierName' => $order->supplier?->company?->name ?? 'Supplier #'.$order->supplier_id,
-            'status' => strtolower($order->status instanceof OrderStatus
-                ? $order->status->value
-                : (string) $order->status),
+            'status' => $statusValue,
             'statusLabel' => $order->status instanceof OrderStatus
                 ? $order->status->label()
                 : (string) $order->status,
@@ -232,7 +309,14 @@ class ResellerOrderListService
             'courierName' => $order->shipment?->courier?->name,
             'trackingId' => $order->shipment?->tracking_number,
             'showUrl' => route('orders.show', $order),
+            'claimUrl' => route('orders.cca.claim', $order),
             'isMine' => $order->cca_id !== null && (int) $order->cca_id === (int) $actor->id,
+            'workspace' => $forCallCenterWorkspace ? 'call-center' : 'ongoing',
+            'isGlobal' => false,
+            // CCA may select/edit only orders assigned to them; owners may bulk-assign any company row.
+            'isEditable' => $this->ccaEligibilityService->isEligible($actor, (int) $actor->company_id)
+                ? ($order->cca_id !== null && (int) $order->cca_id === (int) $actor->id)
+                : true,
         ];
     }
 
@@ -317,9 +401,14 @@ class ResellerOrderListService
                 'cca.profile',
                 'market.currency',
                 'currency',
-                'items',
+                'items.variant.product',
                 'address',
+                'draftCourier',
+                'draftCourierService',
+                'draftCourierCity',
+                'creator.role',
                 'statusHistories' => fn ($query) => $query->orderBy('id')->with('changedByUser.profile'),
+                'paymentSubmissions' => fn ($query) => $query->latest('id'),
                 'ccaAssignments' => fn ($query) => $query->orderBy('id')->with([
                     'cca.profile',
                     'assignedByUser.profile',
@@ -339,7 +428,7 @@ class ResellerOrderListService
             ->where('reseller_company_id', (int) $actor->company_id);
     }
 
-    private function filteredQuery(User $actor, Request $request): Builder
+    private function filteredQuery(User $actor, Request $request, bool $ignoreStatus = false): Builder
     {
         $query = $this->baseQuery($actor);
         $filters = $this->activeFilters($request);
@@ -373,7 +462,7 @@ class ResellerOrderListService
             });
         }
 
-        if ($filters['status'] !== '') {
+        if (! $ignoreStatus && $filters['status'] !== '') {
             $status = OrderStatus::tryFrom($filters['status'])
                 ?? OrderStatus::tryFrom(strtoupper($filters['status']));
             if ($status !== null) {
@@ -400,7 +489,11 @@ class ResellerOrderListService
 
         $this->applyDateFilters($query, $filters);
 
-        if ($filters['cca_id'] !== '') {
+        // Pool / unassigned rows have no CCA; ignore the CCA filter on those tabs.
+        $tabIgnoresCca = in_array($filters['tab'], ['pool', 'unassigned'], true)
+            || in_array($filters['assignment'], ['pool', 'unassigned'], true);
+
+        if (! $tabIgnoresCca && $filters['cca_id'] !== '') {
             $ccaId = (int) $filters['cca_id'];
             $belongsToCompany = User::query()
                 ->whereKey($ccaId)

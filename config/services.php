@@ -35,4 +35,18 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Curfox (Royal Express)
+    |--------------------------------------------------------------------------
+    |
+    | Global connection settings for ROYAL booking. Supplier email/password/token
+    | live in supplier_courier_accounts — never here.
+    |
+    */
+    'curfox' => [
+        'base_url' => env('CURFOX_BASE_URL', 'https://v2-dashboards.api.curfox.com'),
+        'tenant' => env('CURFOX_TENANT', 'royalexpress'),
+    ],
+
 ];

@@ -925,6 +925,119 @@ class ResellerManualOrderCreateTest extends TestCase
             ->assertJsonFragment(['id' => $variant->id]);
     }
 
+    public function test_catalog_couriers_return_connected_courier_for_assigned_supplier_product(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $setup = $this->makeCourierSetup($supplier);
+        $marketId = $this->marketByCode('lk')->id;
+
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $marketId,
+                'supplier_id' => $supplier->id,
+            ]))
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $setup['courier']->id,
+                'code' => $setup['courier']->code,
+                'name' => $setup['courier']->name,
+            ]);
+    }
+
+    public function test_catalog_couriers_reject_unassigned_supplier(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view', 'orders.update']);
+        $assigned = $this->makeSupplierUser();
+        $foreign = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $assigned);
+        $this->makeCourierSetup($foreign);
+
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $this->marketByCode('lk')->id,
+                'supplier_id' => $foreign->id,
+            ]))
+            ->assertStatus(422);
+    }
+
+    public function test_catalog_couriers_empty_when_supplier_has_no_courier_account(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $this->marketByCode('lk')->id,
+                'supplier_id' => $supplier->id,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data', []);
+    }
+
+    public function test_catalog_couriers_empty_when_account_exists_without_market_pricing(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $setup = $this->makeCourierSetup($supplier);
+
+        CourierMarketPricing::query()->where('courier_id', $setup['courier']->id)->delete();
+
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $this->marketByCode('lk')->id,
+                'supplier_id' => $supplier->id,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data', []);
+    }
+
+    public function test_order_show_eligible_couriers_match_catalog_for_edit_flow(): void
+    {
+        $reseller = $this->makeResellerWithPermission([
+            'orders.create',
+            'orders.view',
+            'orders.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $setup = $this->makeCourierSetup($supplier);
+
+        $phone = '070'.random_int(1000000, 9999999);
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'primary_phone' => $phone,
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('primary_phone_snapshot', $phone)->first();
+        $this->assertNotNull($order);
+
+        $catalog = $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $order->market_id,
+                'supplier_id' => $order->supplier_id,
+            ]))
+            ->assertOk()
+            ->json('data');
+
+        $orderCouriers = $this->actingAs($reseller)
+            ->getJson(route('orders.couriers', $order))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertNotEmpty($catalog);
+        $this->assertSame($catalog, $orderCouriers);
+        $this->assertSame((int) $setup['courier']->id, (int) $catalog[0]['id']);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>

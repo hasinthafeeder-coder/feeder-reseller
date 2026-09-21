@@ -1,46 +1,62 @@
+@php
+    $poolConfirm = $poolConfirm ?? null;
+    $poolActionUrl = $poolActionUrl ?? null;
+@endphp
+
+@if ($poolActionUrl)
+    <form id="orderSendToPoolForm" method="POST" action="{{ $poolActionUrl }}" class="d-none">
+        @csrf
+    </form>
+@endif
+
 <div id="callCenterAssignModal" class="orders-proto-modal modal-backdrop-proto hidden" role="dialog" aria-modal="true" aria-labelledby="callCenterAssignModalTitle">
     <div class="modal-panel-proto">
         <div class="modal-head">
-            <h5 class="mb-0 fs-16" id="callCenterAssignModalTitle">Send to Call Center</h5>
+            <h5 class="mb-0 fs-16" id="callCenterAssignModalTitle">Send to Order Pool</h5>
         </div>
         <div class="modal-body">
-            <p class="fs-14 text-body mb-3">Choose how this order should be assigned. These choices are visual only on this pass.</p>
+            <p class="fs-14 text-body mb-3">
+                This order will become available for any eligible CCA to claim.
+            </p>
 
-            <label class="order-ui-choice-card is-selected" for="assignTargetCca">
-                <div class="form-check mb-0">
-                    <input class="form-check-input" type="radio" name="modalAssignmentTarget" id="assignTargetCca" value="cca" checked>
-                    <span class="choice-title">Select CCA</span>
-                    <p class="choice-copy">Assign this order to a specific call-center agent now.</p>
+            @if (is_array($poolConfirm))
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="fs-13 text-body mb-1">Order</div>
+                        <div class="fw-medium">{{ $poolConfirm['orderNumber'] ?? '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="fs-13 text-body mb-1">Status</div>
+                        <div class="fw-medium">{{ $poolConfirm['status'] ?? '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="fs-13 text-body mb-1">Current CCA</div>
+                        <div class="fw-medium">{{ $poolConfirm['currentCca'] ?? '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="fs-13 text-body mb-1">Customer</div>
+                        <div class="fw-medium">{{ $poolConfirm['customer'] ?? '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="fs-13 text-body mb-1">Phone</div>
+                        <div class="fw-medium">{{ $poolConfirm['phone'] ?? '—' }}</div>
+                    </div>
                 </div>
-            </label>
-            <div class="mt-2 mb-3">
-                <label class="label fs-14 mb-2" for="modalAssignCcaSelect">Select CCA</label>
-                <select id="modalAssignCcaSelect" class="form-select form-control">
-                    <option value="cca-1">Nimali Perera</option>
-                    <option value="cca-2">Kasun Jayawardena</option>
-                    <option value="cca-3">Ishara Fernando</option>
-                </select>
-            </div>
-
-            <label class="order-ui-choice-card" for="assignTargetPool">
-                <div class="form-check mb-0">
-                    <input class="form-check-input" type="radio" name="modalAssignmentTarget" id="assignTargetPool" value="pool">
-                    <span class="choice-title">Send to Order Pool</span>
-                    <p class="choice-copy">Make the order available for any eligible CCA to claim.</p>
-                </div>
-            </label>
-
-            <label class="order-ui-choice-card" for="assignTargetUnassigned">
-                <div class="form-check mb-0">
-                    <input class="form-check-input" type="radio" name="modalAssignmentTarget" id="assignTargetUnassigned" value="unassigned">
-                    <span class="choice-title">Leave Unassigned</span>
-                    <p class="choice-copy">Keep the order in the unassigned queue without a CCA or pool claim.</p>
-                </div>
-            </label>
+            @else
+                <p class="fs-14 text-body mb-0">Confirm sending this order to the Order Pool.</p>
+            @endif
         </div>
         <div class="modal-foot">
             <button type="button" class="btn btn-light border" data-close-modal="callCenterAssignModal">Cancel</button>
-            <button type="button" class="btn btn-primary text-white" id="confirmSendToCallCenterBtn">Send to Call Center</button>
+            @if ($poolActionUrl)
+                <button type="submit" class="btn btn-primary text-white" form="orderSendToPoolForm" id="confirmSendToOrderPoolBtn">
+                    Confirm
+                </button>
+            @else
+                <button type="button" class="btn btn-primary text-white" id="confirmSendToCallCenterBtn">
+                    Confirm
+                </button>
+            @endif
         </div>
     </div>
 </div>

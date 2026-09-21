@@ -350,14 +350,11 @@
                             <input class="form-check-input" type="radio" name="uiPaymentMethod" id="uiPayCod" value="cod" checked {{ $isExpired ? 'disabled' : '' }}>
                             <label class="form-check-label fs-14" for="uiPayCod">Cash on delivery</label>
                         </div>
-                        <div class="form-check mb-2">
+                        <div class="form-check mb-0">
                             <input class="form-check-input" type="radio" name="uiPaymentMethod" id="uiPayBank" value="bank" {{ $isExpired ? 'disabled' : '' }}>
                             <label class="form-check-label fs-14" for="uiPayBank">Bank transfer</label>
                         </div>
-                        <div class="form-check mb-0">
-                            <input class="form-check-input" type="radio" name="uiPaymentMethod" id="uiPayGateway" value="gateway" {{ $isExpired ? 'disabled' : '' }}>
-                            <label class="form-check-label fs-14" for="uiPayGateway">Online gateway</label>
-                        </div>
+                        <p class="fs-13 text-body mb-0 mt-3">Bank transfer slip upload is available on the live order view.</p>
                         <p class="fs-13 text-body mb-0 mt-3">Payment methods are visual only. No payment is processed from this screen.</p>
                     </div>
                 </div>
@@ -391,6 +388,15 @@
     'banPhone1' => $order['customerPhone'],
     'banPhone2' => $order['secondaryPhone'],
 ])
-@include('pages.orders.partials.ui-call-center-modal')
+@include('pages.orders.partials.ui-call-center-modal', [
+    'poolConfirm' => [
+        'orderNumber' => $order['orderNumber'] ?? '—',
+        'status' => $order['statusLabel'] ?? ($order['status'] ?? '—'),
+        'currentCca' => $order['ccaName'] ?? ($order['assignment'] === 'pool' ? 'Order Pool' : 'Unassigned'),
+        'customer' => $order['customerName'] ?? '—',
+        'phone' => $order['customerPhone'] ?? '—',
+    ],
+    'poolActionUrl' => null,
+])
 
 <div id="orderUiToast" class="alert alert-success prototype-toast hidden" role="status"></div>

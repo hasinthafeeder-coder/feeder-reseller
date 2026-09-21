@@ -15,7 +15,7 @@
 
     <div class="order-ui-banner">
         <strong>UI architecture preview</strong>
-        These entry points are visual only. Create Order still uses the live manual-order screen. Import is not connected to processing.
+        These entry points open the live Create Order and Import Orders workspaces.
     </div>
 
     <div class="row g-4">

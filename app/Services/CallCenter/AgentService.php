@@ -65,16 +65,24 @@ class AgentService
     ];
 
     /**
-     * Explicit future operational allowlist.
+     * Explicit operational allowlist for Agent permission overrides.
      *
-     * Empty means: any RESELLER portal permission that is not a
-     * call_center.agents.* management permission may be overridden.
-     * Order / lead / call permissions are not invented here; they
-     * remain deferred until those modules define them.
+     * Owners may grant / revoke these on individual Agents. Management
+     * permissions (call_center.agents.*) are never included.
      *
      * @var list<string>
      */
-    private const OPERATIONAL_PERMISSION_ALLOWLIST = [];
+    private const OPERATIONAL_PERMISSION_ALLOWLIST = [
+        'orders.view',
+        'orders.create',
+        'orders.update',
+        'orders.status.update',
+        'orders.comments.create',
+        'dashboard.view',
+        'products.view',
+        'team.structure.view',
+        'customers.view',
+    ];
 
     /**
      * @var Collection<int, Permission>|null

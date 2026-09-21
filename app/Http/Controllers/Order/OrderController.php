@@ -4,19 +4,27 @@ namespace App\Http\Controllers\Order;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Order\AssignOrderCcaRequest;
+use App\Http\Requests\Order\BanCatalogCustomerRequest;
+use App\Http\Requests\Order\BanOrderCustomerRequest;
 use App\Http\Requests\Order\BookOrderShipmentRequest;
 use App\Http\Requests\Order\BulkAssignOrderCcaRequest;
 use App\Http\Requests\Order\BulkOrderIdsRequest;
 use App\Http\Requests\Order\IndexOrderRequest;
+use App\Http\Requests\Order\RandomAssignOrderCcaAllocationsRequest;
+use App\Http\Requests\Order\RandomAssignOrderCcaRequest;
 use App\Http\Requests\Order\StoreManualOrderRequest;
 use App\Http\Requests\Order\StoreOrderCommentRequest;
+use App\Http\Requests\Order\SubmitOrderBankTransferRequest;
+use App\Http\Requests\Order\UpdateManualOrderRequest;
 use App\Http\Requests\Order\UpdateOrderDiscountRequest;
 use App\Http\Requests\Order\UpdateOrderStatusRequest;
 use App\Services\Order\ResellerManualOrderService;
+use App\Services\Order\ResellerOrderAssignmentService;
 use App\Services\Order\ResellerOrderCatalogService;
 use App\Services\Order\ResellerOrderListService;
 use App\Services\Order\ResellerOrderWorkflowService;
 use App\Services\Order\ResellerShipmentWorkflowService;
+use Feeder\Core\Exceptions\CourierProviderBookingException;
 use Feeder\Core\Exceptions\DuplicateOrderWarningException;
 use Feeder\Core\Models\ProductVariant;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
@@ -34,20 +42,45 @@ class OrderController extends Controller
         private readonly ResellerOrderCatalogService $orderCatalogService,
         private readonly ResellerManualOrderService $manualOrderService,
         private readonly ResellerOrderWorkflowService $orderWorkflowService,
+        private readonly ResellerOrderAssignmentService $orderAssignmentService,
         private readonly ResellerShipmentWorkflowService $shipmentWorkflowService,
     ) {}
 
     public function index(IndexOrderRequest $request): View|JsonResponse
     {
         $actor = Auth::user();
+
+        if ($request->query('workspace') === 'import'
+            && app(CallCenterAgentEligibilityService::class)->isEligible($actor, (int) $actor->company_id)
+        ) {
+            abort(403, 'Call center agents cannot import orders.');
+        }
+
         $bootstrap = $this->orderListService->bootstrap($actor, $request);
 
         if ($request->wantsJson() || $request->boolean('json')) {
             return response()->json(['data' => $bootstrap]);
         }
 
+        $importAssignment = null;
+        if ($request->query('workspace') === 'import') {
+            $importAssignment = [
+                'can_assign' => (bool) $actor->hasPermission('orders.cca.assign'),
+                'ccas' => $this->orderAssignmentService->eligibleCcas($actor)->all(),
+                'unassigned_count' => $this->orderAssignmentService->countEligibleUnassigned($actor),
+                'routes' => [
+                    'bulk_assign' => route('orders.bulk.assign'),
+                    'bulk_assign_random' => route('orders.bulk.assign-random'),
+                    'bulk_assign_random_allocations' => route('orders.bulk.assign-random-allocations'),
+                    'bulk_pool' => route('orders.bulk.pool'),
+                ],
+                'csrf' => csrf_token(),
+            ];
+        }
+
         return view('pages.orders.index', [
             'bootstrap' => $bootstrap,
+            'importAssignment' => $importAssignment,
         ]);
     }
 
@@ -60,6 +93,11 @@ class OrderController extends Controller
             'eligibleCcas' => $this->orderCatalogService->eligibleCcasForCompany($actor),
             'isCca' => app(CallCenterAgentEligibilityService::class)
                 ->isEligible($actor, (int) $actor->company_id),
+            'canBanCustomer' => $actor?->hasPermission('customers.bans.create') === true,
+            'canAssignCourier' => $actor?->hasPermission('orders.shipment.book') === true
+                && ! app(CallCenterAgentEligibilityService::class)
+                    ->isEligible($actor, (int) $actor->company_id),
+            'shipmentBootstrap' => null,
             'duplicateOrders' => session('duplicate_orders', []),
             'oldItems' => $this->enrichOldItems(old('items', [])),
             'catalogRoutes' => [
@@ -68,6 +106,7 @@ class OrderController extends Controller
                 'variants' => route('orders.catalog.variants'),
                 'afterHours' => route('orders.catalog.after-hours'),
                 'customerLookup' => route('orders.catalog.customer-lookup'),
+                'customerBan' => route('orders.catalog.customer-ban'),
                 'duplicates' => route('orders.catalog.duplicates'),
                 'couriers' => route('orders.catalog.couriers'),
                 'courierDistricts' => route('orders.catalog.courier-districts'),
@@ -115,6 +154,7 @@ class OrderController extends Controller
                 'product_id' => isset($productIdsByVariant[$variantId])
                     ? (int) $productIdsByVariant[$variantId]
                     : null,
+                'product_name' => isset($item['product_name']) ? (string) $item['product_name'] : '',
                 'product_variant_id' => $variantId,
                 'quantity' => (int) ($item['quantity'] ?? 1),
             ];
@@ -133,13 +173,21 @@ class OrderController extends Controller
         return $enriched;
     }
 
-    public function store(StoreManualOrderRequest $request): RedirectResponse
+    public function store(StoreManualOrderRequest $request): RedirectResponse|JsonResponse
     {
         $actor = Auth::user();
 
         try {
             $order = $this->manualOrderService->create($actor, $request->orderPayload());
         } catch (DuplicateOrderWarningException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Potential duplicate orders were found.',
+                    'errors' => $e->errors(),
+                    'duplicate_orders' => $this->manualOrderService->serializeDuplicates($e),
+                ], 422);
+            }
+
             return redirect()
                 ->route('orders.create')
                 ->withInput($request->except(['duplicate_warning_overridden']))
@@ -147,10 +195,30 @@ class OrderController extends Controller
                 ->with('duplicate_orders', $this->manualOrderService->serializeDuplicates($e))
                 ->with('warning', 'Potential duplicate orders were found. Review them and confirm Continue to create this order.');
         } catch (ValidationException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Validation failed.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
             return redirect()
                 ->route('orders.create')
                 ->withInput($request->all())
                 ->withErrors($e->errors());
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Order '.$order->order_number.' created successfully.',
+                'data' => [
+                    'uuid' => (string) $order->uuid,
+                    'order_number' => (string) $order->order_number,
+                    'show_url' => route('orders.show', $order),
+                    'book_url' => route('orders.shipment.book', $order),
+                ],
+            ]);
         }
 
         return redirect()
@@ -166,6 +234,13 @@ class OrderController extends Controller
         $eligibleCouriers = ($canBookShipment && $found->shipment === null)
             ? $this->shipmentWorkflowService->couriers($actor, $found)
             : [];
+        $canEditOrder = $this->orderWorkflowService->canEditOrderDetails($actor, $found);
+        $isCca = app(CallCenterAgentEligibilityService::class)
+            ->isEligible($actor, (int) $actor->company_id);
+        $canBanCustomer = $actor?->hasPermission('customers.bans.create') === true
+            && (! $isCca || (int) $found->cca_id === (int) $actor->id)
+            && $found->customer_id !== null
+            && ! (bool) $found->customer?->is_banned;
 
         return view('pages.orders.show', [
             'order' => $found,
@@ -176,7 +251,96 @@ class OrderController extends Controller
             'canReactivate' => $this->orderWorkflowService->canReactivate($found),
             'canBookShipment' => $canBookShipment,
             'eligibleCouriers' => $eligibleCouriers,
+            'canEditOrder' => $canEditOrder,
+            'canBanCustomer' => $canBanCustomer,
+            'markets' => $canEditOrder ? $this->orderCatalogService->marketsForReseller($actor) : collect(),
+            'formEligibleCcas' => $canEditOrder
+                ? $this->orderCatalogService->eligibleCcasForCompany($actor)
+                : collect(),
+            'isCca' => $isCca,
+            'duplicateOrders' => session('duplicate_orders', []),
+            'oldItems' => $canEditOrder
+                ? $this->enrichOldItems(old('items', $this->manualOrderService->editItemsBootstrap($found)))
+                : [],
+            'editFormDefaults' => $canEditOrder
+                ? $this->manualOrderService->editFormDefaults($found)
+                : [],
+            'catalogRoutes' => [
+                'suppliers' => route('orders.catalog.suppliers'),
+                'products' => route('orders.catalog.products'),
+                'variants' => route('orders.catalog.variants'),
+                'afterHours' => route('orders.catalog.after-hours'),
+                'customerLookup' => route('orders.catalog.customer-lookup'),
+                'customerBan' => route('orders.customer.ban', $found),
+                'duplicates' => route('orders.catalog.duplicates'),
+                'couriers' => route('orders.catalog.couriers'),
+                'courierDistricts' => route('orders.catalog.courier-districts'),
+                'courierCities' => route('orders.catalog.courier-cities'),
+                'courierFeePreview' => route('orders.catalog.courier-fee-preview'),
+                'store' => route('orders.store'),
+                'update' => route('orders.update', $found),
+                'bookShipment' => route('orders.shipment.book', $found),
+            ],
+            'canAssignCourier' => $canBookShipment && ! $isCca,
+            'shipmentBootstrap' => $found->shipment !== null
+                ? $this->shipmentWorkflowService->serializeBooking($found->shipment)
+                : null,
         ]);
+    }
+
+    public function update(UpdateManualOrderRequest $request, string $order): RedirectResponse|JsonResponse
+    {
+        $actor = Auth::user();
+        $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
+        $this->orderWorkflowService->assertCcaMayOperateOnOrder($actor, $found);
+
+        try {
+            $updated = $this->manualOrderService->update($actor, $found, $request->orderPayload());
+        } catch (DuplicateOrderWarningException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Potential duplicate orders were found.',
+                    'errors' => $e->errors(),
+                    'duplicate_orders' => $this->manualOrderService->serializeDuplicates($e),
+                ], 422);
+            }
+
+            return redirect()
+                ->route('orders.show', $found)
+                ->withInput($request->except(['duplicate_warning_overridden']))
+                ->withErrors($e->errors())
+                ->with('duplicate_orders', $this->manualOrderService->serializeDuplicates($e))
+                ->with('warning', 'Potential duplicate orders were found. Review them and confirm Continue to save this order.');
+        } catch (ValidationException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Validation failed.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
+            return redirect()
+                ->route('orders.show', $found)
+                ->withInput($request->all())
+                ->withErrors($e->errors());
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Order '.$updated->order_number.' updated successfully.',
+                'data' => [
+                    'uuid' => (string) $updated->uuid,
+                    'order_number' => (string) $updated->order_number,
+                    'show_url' => route('orders.show', $updated),
+                    'book_url' => route('orders.shipment.book', $updated),
+                ],
+            ]);
+        }
+
+        return redirect()
+            ->route('orders.show', $updated)
+            ->with('success', 'Order '.$updated->order_number.' updated successfully.');
     }
 
     public function updateStatus(UpdateOrderStatusRequest $request, string $order): RedirectResponse
@@ -256,6 +420,24 @@ class OrderController extends Controller
             ->with('success', 'Order claimed from the Order Pool.');
     }
 
+    public function moveToPool(string $order): RedirectResponse
+    {
+        $actor = Auth::user();
+        $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
+
+        try {
+            $updated = $this->orderWorkflowService->moveToPool($actor, $found);
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('orders.show', $found)
+                ->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('orders.show', $updated)
+            ->with('success', 'Order sent to the Order Pool.');
+    }
+
     public function bulkAssignCca(BulkAssignOrderCcaRequest $request): RedirectResponse|JsonResponse
     {
         $actor = Auth::user();
@@ -278,13 +460,94 @@ class OrderController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'message' => 'Orders assigned.',
-                'data' => $orders->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))->values(),
+                'data' => [
+                    'assigned_count' => $orders->count(),
+                    'orders' => $orders->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))->values(),
+                ],
             ]);
         }
 
         return redirect()
             ->route('orders.index')
             ->with('success', $orders->count().' order(s) assigned.');
+    }
+
+    public function randomAssignCca(RandomAssignOrderCcaRequest $request): RedirectResponse|JsonResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $result = $this->orderWorkflowService->randomAssignCca(
+                $actor,
+                (int) $request->validated('cca_id'),
+                (int) $request->validated('quantity'),
+                $request->validated('note'),
+            );
+        } catch (ValidationException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['message' => 'Random assign failed.', 'errors' => $e->errors()], 422);
+            }
+
+            return redirect()->route('orders.index')->withInput()->withErrors($e->errors());
+        }
+
+        $assignedCount = (int) $result['assigned_count'];
+        $requested = (int) $result['requested'];
+        $message = $assignedCount === $requested
+            ? $assignedCount.' order(s) assigned.'
+            : $assignedCount.' of '.$requested.' requested order(s) assigned (fewer eligible unassigned orders were available).';
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => $message,
+                'data' => [
+                    'requested' => $requested,
+                    'assigned_count' => $assignedCount,
+                    'available_count' => (int) $result['available_count'],
+                    'orders' => $result['orders']
+                        ->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))
+                        ->values(),
+                ],
+            ]);
+        }
+
+        return redirect()
+            ->route('orders.index')
+            ->with('success', $message);
+    }
+
+    public function randomAssignCcaAllocations(RandomAssignOrderCcaAllocationsRequest $request): JsonResponse
+    {
+        $actor = Auth::user();
+
+        try {
+            $result = $this->orderWorkflowService->randomAssignCcaAllocations(
+                $actor,
+                $request->validated('allocations'),
+                $request->validated('note'),
+            );
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Random assign failed.', 'errors' => $e->errors()], 422);
+        }
+
+        $assignedCount = (int) $result['assigned_count'];
+        $requested = (int) $result['requested'];
+        $message = $assignedCount === $requested
+            ? $assignedCount.' order(s) assigned across call center agents.'
+            : $assignedCount.' of '.$requested.' requested order(s) assigned across call center agents.';
+
+        return response()->json([
+            'message' => $message,
+            'data' => [
+                'requested' => $requested,
+                'assigned_count' => $assignedCount,
+                'available_count' => (int) $result['available_count'],
+                'allocations' => $result['allocations'],
+                'orders' => $result['orders']
+                    ->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))
+                    ->values(),
+            ],
+        ]);
     }
 
     public function bulkMoveToPool(BulkOrderIdsRequest $request): RedirectResponse|JsonResponse
@@ -307,7 +570,10 @@ class OrderController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'message' => 'Orders moved to the Order Pool.',
-                'data' => $orders->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))->values(),
+                'data' => [
+                    'assigned_count' => $orders->count(),
+                    'orders' => $orders->map(fn ($order) => $this->orderListService->serializeOrder($order, $actor))->values(),
+                ],
             ]);
         }
 
@@ -367,6 +633,72 @@ class OrderController extends Controller
         return redirect()
             ->route('orders.show', $found)
             ->with('success', 'Comment added.');
+    }
+
+    public function banCustomer(BanOrderCustomerRequest $request, string $order): RedirectResponse|JsonResponse
+    {
+        $actor = Auth::user();
+        $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
+
+        try {
+            $this->orderWorkflowService->banCustomer(
+                $actor,
+                $found,
+                $request->validated('reason'),
+            );
+        } catch (ValidationException $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => collect($e->errors())->flatten()->first() ?: 'Unable to ban customer.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
+            return redirect()
+                ->route('orders.show', $found)
+                ->withInput()
+                ->withErrors($e->errors());
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Customer banned successfully.',
+                'data' => [
+                    'customer_id' => (int) $found->customer_id,
+                    'is_banned' => true,
+                ],
+            ]);
+        }
+
+        return redirect()
+            ->route('orders.show', $found)
+            ->with('success', 'Customer banned successfully.');
+    }
+
+    public function submitBankTransfer(SubmitOrderBankTransferRequest $request, string $order): RedirectResponse
+    {
+        $actor = Auth::user();
+        $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
+
+        try {
+            $this->orderWorkflowService->submitBankTransfer(
+                $actor,
+                $found,
+                $request->file('payment_slip'),
+                $request->validated('reference_number'),
+                $request->validated('amount'),
+                $request->validated('description'),
+            );
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('orders.show', $found)
+                ->withInput()
+                ->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('orders.show', $found)
+            ->with('success', 'Bank transfer submitted for admin review.');
     }
 
     public function updateDiscount(UpdateOrderDiscountRequest $request, string $order): RedirectResponse
@@ -450,7 +782,8 @@ class OrderController extends Controller
     {
         $request->validate([
             'courier_service_id' => ['required', 'integer', 'min:1'],
-            'district' => ['required', 'string', 'max:255'],
+            'courier_state_id' => ['nullable', 'integer', 'min:1'],
+            'district' => ['required_without:courier_state_id', 'nullable', 'string', 'max:255'],
         ]);
 
         $actor = Auth::user();
@@ -461,7 +794,8 @@ class OrderController extends Controller
                 $actor,
                 $found,
                 (int) $request->integer('courier_service_id'),
-                (string) $request->input('district'),
+                (string) $request->input('district', ''),
+                $request->filled('courier_state_id') ? (int) $request->integer('courier_state_id') : null,
             );
         } catch (ValidationException $e) {
             return response()->json(['message' => 'Validation failed.', 'errors' => $e->errors()], 422);
@@ -492,24 +826,60 @@ class OrderController extends Controller
         return response()->json(['data' => $preview]);
     }
 
-    public function bookShipment(BookOrderShipmentRequest $request, string $order): RedirectResponse
+    public function bookShipment(BookOrderShipmentRequest $request, string $order): RedirectResponse|JsonResponse
     {
         $actor = Auth::user();
         $found = $this->shipmentWorkflowService->findOrFailForCompany($actor, $order);
+        $serviceId = $request->validated('courier_service_id');
 
         try {
-            $this->shipmentWorkflowService->book(
+            $shipment = $this->shipmentWorkflowService->book(
                 $actor,
                 $found,
                 (int) $request->validated('courier_id'),
-                (int) $request->validated('courier_service_id'),
+                $serviceId !== null ? (int) $serviceId : null,
                 (int) $request->validated('courier_city_id'),
             );
-        } catch (ValidationException $e) {
+        } catch (CourierProviderBookingException $e) {
+            if ($request->wantsJson()) {
+                $courierName = $e->courier['name'] ?? 'Courier';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $courierName.' booking failed',
+                    'courier' => $e->courier,
+                    'errors' => $e->errors(),
+                    'debug' => $e->debug,
+                ], 422);
+            }
+
             return redirect()
                 ->route('orders.show', $found)
                 ->withInput()
                 ->withErrors($e->errors());
+        } catch (ValidationException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Courier assignment failed.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
+            return redirect()
+                ->route('orders.show', $found)
+                ->withInput()
+                ->withErrors($e->errors());
+        }
+
+        $payload = $this->shipmentWorkflowService->serializeBooking($shipment);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Courier assigned successfully.',
+                'data' => $payload,
+            ]);
         }
 
         return redirect()
@@ -601,6 +971,26 @@ class OrderController extends Controller
         return response()->json(['data' => $result]);
     }
 
+    public function banCatalogCustomer(BanCatalogCustomerRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->orderCatalogService->banCustomerByPhones(
+                Auth::user(),
+                $request->validated(),
+            );
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?: 'Unable to ban customer.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Customer banned successfully.',
+            'data' => $result,
+        ]);
+    }
+
     public function duplicatesPreview(Request $request): JsonResponse
     {
         $request->validate([
@@ -668,7 +1058,8 @@ class OrderController extends Controller
             'market_id' => ['required', 'integer'],
             'supplier_id' => ['required', 'integer'],
             'courier_id' => ['required', 'integer', 'min:1'],
-            'district' => ['required', 'string', 'max:255'],
+            'courier_state_id' => ['nullable', 'integer', 'min:1'],
+            'district' => ['required_without:courier_state_id', 'nullable', 'string', 'max:255'],
         ]);
 
         try {
@@ -677,7 +1068,8 @@ class OrderController extends Controller
                 (int) $request->integer('market_id'),
                 (int) $request->integer('supplier_id'),
                 (int) $request->integer('courier_id'),
-                (string) $request->input('district'),
+                (string) $request->input('district', ''),
+                $request->filled('courier_state_id') ? (int) $request->integer('courier_state_id') : null,
             );
         } catch (ValidationException $e) {
             return response()->json(['message' => 'Validation failed.', 'errors' => $e->errors()], 422);

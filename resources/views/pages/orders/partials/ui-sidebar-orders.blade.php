@@ -2,6 +2,15 @@
 @php
     extract(require resource_path('views/pages/orders/partials/ui-urls-data.php'));
 
+    $orderUiActor = auth()->user();
+    $orderUiIsCca = $orderUiActor !== null
+        && app(\Feeder\Core\Services\Order\CallCenterAgentEligibilityService::class)
+            ->isEligible($orderUiActor, (int) $orderUiActor->company_id);
+    $orderUiCanView = $orderUiActor?->hasPermission('orders.view') === true;
+    $orderUiCanCreate = $orderUiActor?->hasPermission('orders.create') === true;
+    // Spreadsheet import + post-import assignment is reseller-owner workflow, not CCA.
+    $orderUiCanImport = $orderUiCanCreate && ! $orderUiIsCca;
+
     $orderUiIsCreate = request()->routeIs('orders.create') && ! request()->filled('ui_screen');
     $orderUiIsOngoing = request()->routeIs('orders.index') && ! $orderUiIsArchitectureList;
     $orderUiIsCallCenter = $orderUiWorkspace === 'call-center';
@@ -9,24 +18,31 @@
     $orderUiIsNew = $orderUiWorkspace === 'new';
     $orderUiIsArchived = $orderUiWorkspace === 'archived';
 @endphp
+@if ($orderUiCanCreate || $orderUiCanImport)
 <li class="menu-item after-sub-menu {{ $orderUiIsNew || $orderUiIsCreate || $orderUiIsImport ? 'open' : '' }}">
     <a href="javascript:void(0);" class="menu-link menu-toggle">
         <span class="material-symbols-outlined menu-icon">add_shopping_cart</span>
         <span class="title">New Orders</span>
     </a>
     <ul class="menu-sub">
+        @if ($orderUiCanCreate)
         <li class="menu-item">
             <a href="{{ $orderUiUrls['create'] }}" class="menu-link {{ $orderUiIsCreate ? 'active' : '' }}">
                 Create Order
             </a>
         </li>
+        @endif
+        @if ($orderUiCanImport)
         <li class="menu-item">
             <a href="{{ $orderUiUrls['import'] }}" class="menu-link {{ $orderUiIsImport ? 'active' : '' }}">
                 Import Order
             </a>
         </li>
+        @endif
     </ul>
 </li>
+@endif
+@if ($orderUiCanView)
 <li class="menu-item">
     <a href="{{ $orderUiUrls['call_center'] }}" class="menu-link {{ $orderUiIsCallCenter ? 'active' : '' }}">
         <span class="material-symbols-outlined menu-icon">headset_mic</span>
@@ -45,3 +61,4 @@
         <span class="title">Archived Orders</span>
     </a>
 </li>
+@endif

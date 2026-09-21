@@ -8,6 +8,7 @@ use Feeder\Core\Models\User;
 use Feeder\Core\Services\Courier\CourierBookingAdapterResolver;
 use Feeder\Core\Services\Order\OrderCourierLookupService;
 use Feeder\Core\Services\Order\ShipmentBookingService;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Reseller Portal adapter for courier lookup and shipment booking.
@@ -53,7 +54,7 @@ class ResellerShipmentWorkflowService
     }
 
     /**
-     * @return list<array{district: string}>
+     * @return list<array{id: int, uuid: string, name: string, district: string, external_id: string}>
      */
     public function districts(User $actor, Order $order, int $courierServiceId): array
     {
@@ -65,15 +66,21 @@ class ResellerShipmentWorkflowService
     }
 
     /**
-     * @return list<array{id: int, uuid: string, city_name: string, district_name: string, external_city_code: string}>
+     * @return list<array{id: int, uuid: string, city_name: string, district_name: string, external_city_code: string, courier_state_id: int|null}>
      */
-    public function cities(User $actor, Order $order, int $courierServiceId, string $district): array
-    {
+    public function cities(
+        User $actor,
+        Order $order,
+        int $courierServiceId,
+        string $district,
+        ?int $courierStateId = null,
+    ): array {
         return $this->courierLookupService->citiesForServiceAndDistrict(
             $order,
             $courierServiceId,
             $district,
             (int) $actor->company_id,
+            $courierStateId,
         );
     }
 
@@ -99,10 +106,25 @@ class ResellerShipmentWorkflowService
         User $actor,
         Order $order,
         int $courierId,
-        int $courierServiceId,
+        ?int $courierServiceId,
         int $courierCityId,
     ): Shipment {
         $courier = $this->courierLookupService->requireEligibleCourier($order, $courierId);
+
+        if ($courierServiceId === null || $courierServiceId < 1) {
+            $service = $this->courierLookupService->firstActiveServiceForCourier($courierId);
+
+            if ($service === null) {
+                throw ValidationException::withMessages([
+                    'courier_service_id' => [
+                        'No active courier service is available for the selected courier.',
+                    ],
+                ]);
+            }
+
+            $courierServiceId = (int) $service->id;
+        }
+
         $adapter = $this->adapterResolver->resolve($courier);
 
         return $this->shipmentBookingService->book(
@@ -114,5 +136,35 @@ class ResellerShipmentWorkflowService
             (int) $actor->id,
             (int) $actor->company_id,
         );
+    }
+
+    /**
+     * Normalized booking payload for reseller UI / JSON clients.
+     *
+     * @return array{
+     *     courier: array{id: int, code: string, name: string},
+     *     waybill: string,
+     *     tracking_number: string,
+     *     shipment_uuid: string,
+     *     status: string
+     * }
+     */
+    public function serializeBooking(Shipment $shipment): array
+    {
+        $shipment->loadMissing('courier');
+
+        return [
+            'courier' => [
+                'id' => (int) $shipment->courier_id,
+                'code' => (string) ($shipment->courier?->code ?? ''),
+                'name' => (string) ($shipment->courier?->name ?? ''),
+            ],
+            'waybill' => (string) ($shipment->tracking_number ?? ''),
+            'tracking_number' => (string) ($shipment->tracking_number ?? ''),
+            'shipment_uuid' => (string) $shipment->uuid,
+            'status' => $shipment->status instanceof \BackedEnum
+                ? $shipment->status->value
+                : (string) $shipment->status,
+        ];
     }
 }

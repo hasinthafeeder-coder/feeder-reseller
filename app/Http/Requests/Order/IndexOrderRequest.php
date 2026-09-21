@@ -39,6 +39,17 @@ class IndexOrderRequest extends FormRequest
             ],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
+            'workspace' => [
+                'nullable',
+                'string',
+                Rule::in(['new', 'import', 'call-center', 'archived']),
+            ],
+            'archive' => [
+                'nullable',
+                'string',
+                Rule::in(['completed', 'returned', 'expired']),
+            ],
+            'json' => ['nullable', 'boolean'],
         ];
     }
 }

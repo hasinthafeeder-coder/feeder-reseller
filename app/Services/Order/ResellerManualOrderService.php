@@ -64,12 +64,16 @@ class ResellerManualOrderService
      *     courier_id?: int|null,
      *     courier_service_id?: int|null,
      *     courier_city_id?: int|null,
+     *     courier_fee_amount?: float|string|null,
      *     duplicate_warning_overridden?: bool,
      *     after_hours_warning_shown?: bool,
      *     intent?: string,
      *     assignment_target?: string,
      *     assign_cca_id?: int|null
      * }  $input
+     *
+     * courier_fee_amount is applied only when no courier is selected (import / fee-only drafts).
+     * When a courier is selected, the authoritative fee preview still wins.
      */
 
     public function create(User $actor, array $input): Order
@@ -133,6 +137,13 @@ class ResellerManualOrderService
                 $discountAmount,
             );
             $courierFeeAmount = (float) $feePreview['courier_fee_amount'];
+        } elseif (array_key_exists('courier_fee_amount', $input) && $input['courier_fee_amount'] !== null) {
+            $courierFeeAmount = round((float) $input['courier_fee_amount'], 2);
+            if ($courierFeeAmount < 0) {
+                throw ValidationException::withMessages([
+                    'courier_fee_amount' => ['Courier fee cannot be negative.'],
+                ]);
+            }
         }
         $payload = [
             'source' => OrderSource::MANUAL,
@@ -202,6 +213,174 @@ class ResellerManualOrderService
         // is a separate future workflow.
         return $order->fresh([
             'items',
+            'cca',
+            'ccaAssignments',
+            'statusHistories',
+            'address',
+            'shipment',
+            'draftCourier',
+            'draftCourierService',
+            'draftCourierCity',
+        ]);
+    }
+
+    /**
+     * Update commercial fields on an existing company order.
+     *
+     * @param  array{
+     *     market_id: int,
+     *     supplier_id: int,
+     *     customer_name: string,
+     *     primary_phone: string,
+     *     secondary_phone?: string|null,
+     *     address_line1: string,
+     *     address_line2?: string|null,
+     *     city_name?: string|null,
+     *     district_name?: string|null,
+     *     postal_code?: string|null,
+     *     full_address_text?: string|null,
+     *     items: list<array{product_variant_id: int, quantity: int, selected_selling_price?: float|null}>,
+     *     discount_amount?: float|string,
+     *     courier_id?: int|null,
+     *     courier_service_id?: int|null,
+     *     courier_city_id?: int|null,
+     *     duplicate_warning_overridden?: bool,
+     *     after_hours_warning_shown?: bool
+     * }  $input
+     */
+    public function update(User $actor, Order $order, array $input): Order
+    {
+        if ($actor->company_id === null) {
+            throw ValidationException::withMessages([
+                'reseller_company_id' => ['Authenticated user has no company context.'],
+            ]);
+        }
+
+        if ((int) $order->reseller_company_id !== (int) $actor->company_id) {
+            abort(404);
+        }
+
+        if ((int) $input['market_id'] !== (int) $order->market_id) {
+            throw ValidationException::withMessages([
+                'market_id' => ['Market cannot be changed on an existing order.'],
+            ]);
+        }
+
+        if ((int) $input['supplier_id'] !== (int) $order->supplier_id) {
+            throw ValidationException::withMessages([
+                'supplier_id' => ['Supplier cannot be changed on an existing order.'],
+            ]);
+        }
+
+        $actor->loadMissing('company.owner');
+        $isCca = $this->ccaEligibilityService->isEligible($actor, (int) $actor->company_id);
+        $market = Market::query()->with('country')->findOrFail((int) $order->market_id);
+        $countryId = (int) $market->country_id;
+        $items = $this->resolveAuthoritativeItems(
+            $this->mergeVariantQuantities($input['items'] ?? [])
+        );
+        $customerName = trim((string) $input['customer_name']);
+        $secondaryPhone = isset($input['secondary_phone']) ? trim((string) $input['secondary_phone']) : null;
+        if ($secondaryPhone === '') {
+            $secondaryPhone = null;
+        }
+
+        $addressLine1 = trim((string) $input['address_line1']);
+        $cityName = filled($input['city_name'] ?? null) ? trim((string) $input['city_name']) : '';
+        $districtName = filled($input['district_name'] ?? null) ? trim((string) $input['district_name']) : null;
+        $draft = $this->resolveDraftCourier(
+            supplierId: (int) $order->supplier_id,
+            marketId: (int) $market->id,
+            courierId: isset($input['courier_id']) ? (int) $input['courier_id'] : null,
+            courierServiceId: isset($input['courier_service_id']) ? (int) $input['courier_service_id'] : null,
+            courierCityId: isset($input['courier_city_id']) ? (int) $input['courier_city_id'] : null,
+            districtName: $districtName,
+            cityName: $cityName !== '' ? $cityName : null,
+        );
+        if ($draft['city_name'] !== null && $cityName === '') {
+            $cityName = $draft['city_name'];
+        }
+        if ($draft['district_name'] !== null && $districtName === null) {
+            $districtName = $draft['district_name'];
+        }
+
+        // CCAs cannot change discounts; keep the persisted value.
+        $discountAmount = $isCca
+            ? round((float) $order->discount_amount, 2)
+            : round((float) ($input['discount_amount'] ?? $order->discount_amount), 2);
+
+        $itemsSubtotal = round(array_sum(array_map(
+            static fn (array $line) => round($line['unit_selling_price'] * $line['quantity'], 2),
+            $items,
+        )), 2);
+        $totalWeight = $this->estimateItemsWeight($items);
+        $courierFeeAmount = 0.0;
+        if ($draft['draft_courier_id'] !== null) {
+            $feePreview = $this->courierLookupService->feePreviewForSupplierMarket(
+                (int) $order->supplier_id,
+                (int) $market->id,
+                (int) $draft['draft_courier_id'],
+                $totalWeight,
+                $itemsSubtotal,
+                $discountAmount,
+            );
+            $courierFeeAmount = (float) $feePreview['courier_fee_amount'];
+        }
+
+        $payload = [
+            'customer' => [
+                'display_name' => $customerName,
+                'primary_country_id' => $countryId,
+                'primary_phone' => trim((string) $input['primary_phone']),
+                'primary_phone_country_id' => $countryId,
+                'secondary_phone' => $secondaryPhone,
+                'secondary_phone_country_id' => $secondaryPhone !== null ? $countryId : null,
+            ],
+            'address' => [
+                'recipient_name' => $customerName,
+                'line1' => $addressLine1,
+                'line2' => filled($input['address_line2'] ?? null) ? trim((string) $input['address_line2']) : null,
+                'city_name' => $cityName,
+                'district_name' => $districtName,
+                'postal_code' => filled($input['postal_code'] ?? null) ? trim((string) $input['postal_code']) : null,
+                'country_id' => $countryId,
+                'full_address_text' => filled($input['full_address_text'] ?? null)
+                    ? trim((string) $input['full_address_text'])
+                    : $addressLine1,
+            ],
+            'items' => $items,
+            'discount_amount' => $discountAmount,
+            'courier_fee_amount' => $courierFeeAmount,
+            'draft_courier_id' => $draft['draft_courier_id'],
+            'draft_courier_service_id' => $draft['draft_courier_service_id'],
+            'draft_courier_city_id' => $draft['draft_courier_city_id'],
+            'duplicate_warning_overridden' => (bool) ($input['duplicate_warning_overridden'] ?? false),
+            'after_hours_warning_shown' => (bool) ($input['after_hours_warning_shown'] ?? false),
+            'updated_by' => (int) $actor->id,
+        ];
+
+        try {
+            $order = $this->orderService->updateDetails(
+                $order,
+                $payload,
+                (int) $actor->id,
+                (int) $actor->company_id,
+            );
+        } catch (ConflictingCustomerIdentityException $e) {
+            throw ValidationException::withMessages([
+                'primary_phone' => [
+                    'The primary and secondary phone numbers belong to different customers. '
+                    .'Order update was rejected. Do not merge customers silently.',
+                ],
+                'secondary_phone' => [
+                    'Conflicting customer identities detected (customers '
+                    .$e->primaryCustomerId.' and '.$e->secondaryCustomerId.').',
+                ],
+            ]);
+        }
+
+        return $order->fresh([
+            'items.variant.product',
             'cca',
             'ccaAssignments',
             'statusHistories',
@@ -504,5 +683,67 @@ class ResellerManualOrderService
             'district_name' => $districtName,
             'city_name' => $cityName,
         ];
+    }
+
+    /**
+     * Defaults for the shared create/edit form when opening an existing order.
+     *
+     * @return array<string, mixed>
+     */
+    public function editFormDefaults(Order $order): array
+    {
+        $order->loadMissing(['address', 'items.variant.product', 'draftCourierCity']);
+
+        $line1 = (string) ($order->address?->line1 ?? '');
+        $line2 = (string) ($order->address?->line2 ?? '');
+        $addressDisplay = trim($line1.($line2 !== '' ? ', '.$line2 : ''));
+
+        return [
+            'market_id' => (int) $order->market_id,
+            'supplier_id' => (int) $order->supplier_id,
+            'customer_name' => (string) $order->customer_name_snapshot,
+            'primary_phone' => (string) $order->primary_phone_snapshot,
+            'secondary_phone' => (string) ($order->secondary_phone_snapshot ?? ''),
+            'address_line1' => $addressDisplay !== '' ? $addressDisplay : $line1,
+            'address_line2' => '',
+            'city_name' => (string) ($order->address?->city_name ?? ''),
+            'district_name' => (string) ($order->address?->district_name ?? ''),
+            'postal_code' => (string) ($order->address?->postal_code ?? ''),
+            'full_address_text' => (string) ($order->address?->full_address_text ?? $line1),
+            'courier_id' => $order->draft_courier_id !== null ? (int) $order->draft_courier_id : null,
+            'courier_service_id' => $order->draft_courier_service_id !== null
+                ? (int) $order->draft_courier_service_id
+                : null,
+            'courier_city_id' => $order->draft_courier_city_id !== null
+                ? (int) $order->draft_courier_city_id
+                : null,
+            'discount_amount' => round((float) $order->discount_amount, 2),
+        ];
+    }
+
+    /**
+     * @return list<array{
+     *     product_id: ?int,
+     *     product_name: string,
+     *     product_variant_id: int,
+     *     quantity: int,
+     *     selected_selling_price: float
+     * }>
+     */
+    public function editItemsBootstrap(Order $order): array
+    {
+        $order->loadMissing(['items.variant.product']);
+
+        return $order->items->map(function ($item) {
+            $product = $item->variant?->product;
+
+            return [
+                'product_id' => $item->product_id !== null ? (int) $item->product_id : null,
+                'product_name' => (string) ($item->product_name_snapshot ?: ($product?->name ?? '')),
+                'product_variant_id' => (int) $item->product_variant_id,
+                'quantity' => (int) $item->quantity,
+                'selected_selling_price' => round((float) $item->unit_selling_price, 2),
+            ];
+        })->values()->all();
     }
 }
