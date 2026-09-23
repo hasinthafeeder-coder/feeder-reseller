@@ -230,11 +230,15 @@ class OrderController extends Controller
     {
         $actor = Auth::user();
         $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
-        $canBookShipment = $actor?->hasPermission('orders.shipment.book') === true;
+        $canBookShipment = $actor?->hasPermission('orders.shipment.book') === true
+            && ! $this->orderWorkflowService->hasPendingPaymentApproval($found);
         $eligibleCouriers = ($canBookShipment && $found->shipment === null)
             ? $this->shipmentWorkflowService->couriers($actor, $found)
             : [];
         $canEditOrder = $this->orderWorkflowService->canEditOrderDetails($actor, $found);
+        $isPendingApproval = $this->orderWorkflowService->hasPendingPaymentApproval($found);
+        $canSubmitBankTransfer = $this->orderWorkflowService->canSubmitBankTransfer($actor, $found);
+        $latestBankTransfer = $this->orderWorkflowService->latestBankTransferSubmission($found);
         $isCca = app(CallCenterAgentEligibilityService::class)
             ->isEligible($actor, (int) $actor->company_id);
         $canBanCustomer = $actor?->hasPermission('customers.bans.create') === true
@@ -253,6 +257,9 @@ class OrderController extends Controller
             'eligibleCouriers' => $eligibleCouriers,
             'canEditOrder' => $canEditOrder,
             'canBanCustomer' => $canBanCustomer,
+            'isPendingApproval' => $isPendingApproval,
+            'canSubmitBankTransfer' => $canSubmitBankTransfer,
+            'latestBankTransfer' => $latestBankTransfer,
             'markets' => $canEditOrder ? $this->orderCatalogService->marketsForReseller($actor) : collect(),
             'formEligibleCcas' => $canEditOrder
                 ? $this->orderCatalogService->eligibleCcasForCompany($actor)
@@ -698,7 +705,7 @@ class OrderController extends Controller
 
         return redirect()
             ->route('orders.show', $found)
-            ->with('success', 'Bank transfer submitted for admin review.');
+            ->with('success', 'Bank transfer submitted for approval. The order is now Pending Approval.');
     }
 
     public function updateDiscount(UpdateOrderDiscountRequest $request, string $order): RedirectResponse
@@ -885,6 +892,20 @@ class OrderController extends Controller
         return redirect()
             ->route('orders.show', $found)
             ->with('success', 'Shipment booked successfully.');
+    }
+
+    public function filterProducts(Request $request): JsonResponse
+    {
+        $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $products = $this->orderListService->searchFilterProducts(
+            Auth::user(),
+            $request->input('search'),
+        );
+
+        return response()->json(['data' => $products]);
     }
 
     public function suppliers(Request $request): JsonResponse

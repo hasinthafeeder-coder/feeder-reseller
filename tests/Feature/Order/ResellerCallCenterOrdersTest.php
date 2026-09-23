@@ -580,6 +580,168 @@ class ResellerCallCenterOrdersTest extends TestCase
         $this->assertNotNull($hold->fresh());
     }
 
+    public function test_call_center_product_filter_returns_orders_containing_selected_product(): void
+    {
+        $owner = $this->makeResellerWithPermission(['orders.view', 'orders.cca.assign', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($owner, $supplier);
+
+        $variantA = $this->makeVariant($supplier);
+        $variantB = $this->makeVariant($supplier);
+
+        $orderWithA = $this->makeOrder($owner, $supplier, $variantA, [
+            'order_number' => 'CC-PROD-A',
+        ]);
+        $this->attachOrderLineAndAddress($orderWithA, $variantA);
+
+        $orderWithB = $this->makeOrder($owner, $supplier, $variantB, [
+            'order_number' => 'CC-PROD-B',
+        ]);
+        $this->attachOrderLineAndAddress($orderWithB, $variantB);
+
+        $orderWithBoth = $this->makeOrder($owner, $supplier, $variantA, [
+            'order_number' => 'CC-PROD-BOTH',
+        ]);
+        $this->attachOrderLineAndAddress($orderWithBoth, $variantA);
+        $variantB->loadMissing('product');
+        \Feeder\Core\Models\OrderItem::query()->create([
+            'order_id' => $orderWithBoth->id,
+            'product_id' => $variantB->product_id,
+            'product_variant_id' => $variantB->id,
+            'product_name_snapshot' => $variantB->product->name,
+            'variant_name_snapshot' => $variantB->name,
+            'barcode_snapshot' => $variantB->barcode,
+            'quantity' => 1,
+            'unit_selling_price' => 250,
+            'unit_cost_snapshot' => 100,
+            'unit_company_commission_snapshot' => 150,
+            'unit_weight_snapshot' => 0.5,
+            'line_selling_total' => 250,
+            'line_weight_total' => 0.5,
+        ]);
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.index', [
+                'workspace' => 'call-center',
+                'tab' => 'all',
+                'product_id' => $variantA->product_id,
+                'json' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.filters.product_id', (string) $variantA->product_id)
+            ->assertJsonPath('data.selected_product.id', $variantA->product_id)
+            ->assertJsonFragment(['orderNumber' => 'CC-PROD-A'])
+            ->assertJsonFragment(['orderNumber' => 'CC-PROD-BOTH'])
+            ->assertJsonMissing(['orderNumber' => 'CC-PROD-B']);
+    }
+
+    public function test_call_center_date_from_to_filters_remain_independent_of_product_filter(): void
+    {
+        $owner = $this->makeResellerWithPermission(['orders.view', 'orders.cca.assign', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($owner, $supplier);
+        $variant = $this->makeVariant($supplier);
+
+        $inside = $this->makeOrder($owner, $supplier, $variant, [
+            'order_number' => 'CC-DATE-IN',
+        ]);
+        $this->attachOrderLineAndAddress($inside, $variant);
+        $inside->forceFill(['created_at' => now()->subDays(2)])->saveQuietly();
+
+        $outside = $this->makeOrder($owner, $supplier, $variant, [
+            'order_number' => 'CC-DATE-OUT',
+        ]);
+        $this->attachOrderLineAndAddress($outside, $variant);
+        $outside->forceFill(['created_at' => now()->subDays(10)])->saveQuietly();
+
+        $from = now()->subDays(5)->toDateString();
+        $to = now()->toDateString();
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.index', [
+                'workspace' => 'call-center',
+                'tab' => 'all',
+                'date_from' => $from,
+                'date_to' => $to,
+                'json' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.filters.date_from', $from)
+            ->assertJsonPath('data.filters.date_to', $to)
+            ->assertJsonFragment(['orderNumber' => 'CC-DATE-IN'])
+            ->assertJsonMissing(['orderNumber' => 'CC-DATE-OUT']);
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.index', [
+                'workspace' => 'call-center',
+                'tab' => 'all',
+                'product_id' => $variant->product_id,
+                'date_from' => $from,
+                'date_to' => $to,
+                'json' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.filters.product_id', (string) $variant->product_id)
+            ->assertJsonPath('data.filters.date_from', $from)
+            ->assertJsonPath('data.filters.date_to', $to)
+            ->assertJsonFragment(['orderNumber' => 'CC-DATE-IN'])
+            ->assertJsonMissing(['orderNumber' => 'CC-DATE-OUT']);
+    }
+
+    public function test_call_center_unauthorized_product_filter_yields_empty_results(): void
+    {
+        $owner = $this->makeResellerWithPermission(['orders.view', 'orders.cca.assign', 'orders.update']);
+        $assignedSupplier = $this->makeSupplierUser();
+        $foreignSupplier = $this->makeSupplierUser();
+        $this->assignSupplier($owner, $assignedSupplier);
+
+        $assignedVariant = $this->makeVariant($assignedSupplier);
+        $foreignVariant = $this->makeVariant($foreignSupplier);
+
+        $order = $this->makeOrder($owner, $assignedSupplier, $assignedVariant, [
+            'order_number' => 'CC-PROD-AUTH',
+        ]);
+        $this->attachOrderLineAndAddress($order, $assignedVariant);
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.index', [
+                'workspace' => 'call-center',
+                'tab' => 'all',
+                'product_id' => $foreignVariant->product_id,
+                'json' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 0)
+            ->assertJsonPath('data.selected_product', null)
+            ->assertJsonMissing(['orderNumber' => 'CC-PROD-AUTH']);
+    }
+
+    public function test_call_center_filter_products_endpoint_only_returns_accessible_products(): void
+    {
+        $owner = $this->makeResellerWithPermission(['orders.view']);
+        $assignedSupplier = $this->makeSupplierUser();
+        $foreignSupplier = $this->makeSupplierUser();
+        $this->assignSupplier($owner, $assignedSupplier);
+
+        $assignedVariant = $this->makeVariant($assignedSupplier);
+        $foreignVariant = $this->makeVariant($foreignSupplier);
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.filter-products', [
+                'search' => $assignedVariant->product->name,
+            ]))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $assignedVariant->product_id])
+            ->assertJsonMissing(['id' => $foreignVariant->product_id]);
+
+        $this->actingAs($owner)
+            ->getJson(route('orders.filter-products', [
+                'search' => $foreignVariant->product->name,
+            ]))
+            ->assertOk()
+            ->assertJsonMissing(['id' => $foreignVariant->product_id]);
+    }
+
     /**
      * @param  list<string>  $permissionSlugs
      */

@@ -107,7 +107,7 @@
                                 <input type="hidden" name="courier_city_id" id="courierCityIdValue" value="{{ $fd('courier_city_id', '') }}">
                                 @if ($canAssignCourier ?? false)
                                     <div class="col-12">
-                                        <div id="assignedCourierPanel" class="alert alert-success mb-0 {{ empty($shipmentBootstrap['waybill'] ?? null) ? 'hidden' : '' }}" role="status">
+                                        <div id="assignedCourierPanel" class="alert alert-success {{ empty($shipmentBootstrap['waybill'] ?? null) ? 'hidden' : '' }}" role="status">
                                             <div class="fw-medium" id="assignedCourierName">{{ $shipmentBootstrap['courier']['name'] ?? '' }}</div>
                                             <div class="fs-13" id="assignedCourierWaybill">{{ ($shipmentBootstrap['waybill'] ?? '') !== '' ? 'Waybill: '.$shipmentBootstrap['waybill'] : '' }}</div>
                                         </div>

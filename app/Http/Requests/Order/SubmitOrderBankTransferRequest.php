@@ -17,7 +17,7 @@ class SubmitOrderBankTransferRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'payment_slip' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'payment_slip' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
             'reference_number' => ['required', 'string', 'max:100'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'description' => ['required', 'string', 'min:3', 'max:2000'],

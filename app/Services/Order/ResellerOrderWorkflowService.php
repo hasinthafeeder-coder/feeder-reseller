@@ -4,8 +4,6 @@ namespace App\Services\Order;
 
 use Feeder\Core\Enums\OrderCommentContextType;
 use Feeder\Core\Enums\OrderCcaAssignmentOrigin;
-use Feeder\Core\Enums\OrderPaymentMethod;
-use Feeder\Core\Enums\OrderPaymentReviewStatus;
 use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Models\CustomerBan;
 use Feeder\Core\Models\Order;
@@ -17,6 +15,7 @@ use Feeder\Core\Services\Order\CustomerBanService;
 use Feeder\Core\Services\Order\OrderCcaAssignmentService;
 use Feeder\Core\Services\Order\OrderCommentService;
 use Feeder\Core\Services\Order\OrderDiscountService;
+use Feeder\Core\Services\Order\OrderPaymentReviewService;
 use Feeder\Core\Services\Order\OrderStatusService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -40,6 +39,7 @@ class ResellerOrderWorkflowService
         private readonly OrderDiscountService $discountService,
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly CustomerBanService $customerBanService,
+        private readonly OrderPaymentReviewService $paymentReviewService,
     ) {}
 
     public function findForCompany(User $actor, string $orderUuid): ?Order
@@ -359,36 +359,79 @@ class ResellerOrderWorkflowService
     ): OrderPaymentSubmission {
         $this->assertCcaMayOperateOnOrder($actor, $order);
 
-        if ($order->isCancelled()) {
-            throw ValidationException::withMessages([
-                'order' => ['Cancelled orders cannot accept bank transfer submissions.'],
-            ]);
-        }
-
-        $path = $slip->store(
-            'order-payment-slips/'.$order->uuid,
-            'local'
+        return $this->paymentReviewService->submitBankTransfer(
+            $order,
+            $actor,
+            $slip,
+            $referenceNumber,
+            $amount,
+            $description,
+            (int) $actor->company_id,
         );
+    }
 
-        if ($path === false) {
-            throw ValidationException::withMessages([
-                'payment_slip' => ['Unable to store the payment slip. Try again.'],
-            ]);
+    public function hasPendingPaymentApproval(Order $order): bool
+    {
+        return $this->paymentReviewService->hasPendingApproval($order);
+    }
+
+    public function canSubmitBankTransfer(User $actor, Order $order): bool
+    {
+        if (! $actor->hasPermission('orders.update')) {
+            return false;
         }
 
-        return OrderPaymentSubmission::query()->create([
-            'order_id' => (int) $order->id,
-            'method' => OrderPaymentMethod::BANK_TRANSFER,
-            'review_status' => OrderPaymentReviewStatus::PENDING_REVIEW,
-            'reference_number' => trim($referenceNumber),
-            'amount' => $amount,
-            'description' => trim($description),
-            'slip_path' => $path,
-            'slip_original_name' => $slip->getClientOriginalName(),
-            'submitted_by_user_id' => (int) $actor->id,
-            'submitted_by_company_id' => (int) $actor->company_id,
-            'submitted_at' => now(),
-        ]);
+        if ($order->isCancelled()) {
+            return false;
+        }
+
+        $status = $order->status instanceof OrderStatus
+            ? $order->status
+            : OrderStatus::tryFrom((string) $order->status);
+
+        if ($status === OrderStatus::CONFIRMED || $order->confirmed_at !== null) {
+            return false;
+        }
+
+        if ($this->paymentReviewService->hasPendingApproval($order)) {
+            return false;
+        }
+
+        $order->loadMissing('paymentSubmissions');
+        $hasApproved = $order->paymentSubmissions->contains(function (OrderPaymentSubmission $submission): bool {
+            $method = $submission->method instanceof \Feeder\Core\Enums\OrderPaymentMethod
+                ? $submission->method
+                : \Feeder\Core\Enums\OrderPaymentMethod::tryFrom((string) $submission->method);
+            $review = $submission->review_status instanceof \Feeder\Core\Enums\OrderPaymentReviewStatus
+                ? $submission->review_status
+                : \Feeder\Core\Enums\OrderPaymentReviewStatus::tryFrom((string) $submission->review_status);
+
+            return $method === \Feeder\Core\Enums\OrderPaymentMethod::BANK_TRANSFER
+                && $review === \Feeder\Core\Enums\OrderPaymentReviewStatus::APPROVED;
+        });
+
+        if ($hasApproved) {
+            return false;
+        }
+
+        if ($this->ccaEligibilityService->isEligible($actor, (int) $actor->company_id)) {
+            return (int) $order->cca_id === (int) $actor->id;
+        }
+
+        return true;
+    }
+
+    public function latestBankTransferSubmission(Order $order): ?OrderPaymentSubmission
+    {
+        $order->loadMissing('paymentSubmissions');
+
+        return $order->paymentSubmissions->first(function (OrderPaymentSubmission $submission): bool {
+            $method = $submission->method instanceof \Feeder\Core\Enums\OrderPaymentMethod
+                ? $submission->method
+                : \Feeder\Core\Enums\OrderPaymentMethod::tryFrom((string) $submission->method);
+
+            return $method === \Feeder\Core\Enums\OrderPaymentMethod::BANK_TRANSFER;
+        });
     }
 
     public function updateDiscount(User $actor, Order $order, float|string $discountAmount): Order
@@ -456,6 +499,10 @@ class ResellerOrderWorkflowService
         }
 
         if ($order->confirmed_at !== null || $order->status === OrderStatus::CONFIRMED) {
+            return false;
+        }
+
+        if ($this->paymentReviewService->hasPendingApproval($order)) {
             return false;
         }
 

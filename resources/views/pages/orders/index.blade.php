@@ -495,6 +495,11 @@
         .orders-list-prototype .badge-status.is-hold { background: #fff3cd; color: #664d03; }
         .orders-list-prototype .badge-status.is-expiring { background: rgba(239, 73, 35, 0.12); color: #ef4923; }
         .orders-list-prototype .badge-status.is-expired { background: #e9ecef; color: #41464b; }
+        .orders-list-prototype .badge-status.is-pending-approval,
+        .orders-proto-modal .badge-status.is-pending-approval {
+            background: #fff3cd;
+            color: #664d03;
+        }
     </style>
     @include('pages.orders.partials.ui-styles')
 @endpush

@@ -63,13 +63,19 @@
     $canAssignCca = ! $isCcaActor && $authUser?->hasPermission('orders.cca.assign');
     $canComment = $authUser?->hasPermission('orders.comments.create')
         && (! $isCcaActor || $isAssignedToActor);
-    $canUpdateDiscount = ! $isCcaActor && $authUser?->hasPermission('orders.discount.update');
+    $isPendingApproval = (bool) ($isPendingApproval ?? false);
+    $canUpdateDiscount = ! $isCcaActor
+        && $authUser?->hasPermission('orders.discount.update')
+        && ! $isPendingApproval;
     $canClaimFromPool = $isCcaActor
         && $orderInPool
         && $authUser?->hasPermission('orders.update');
-    $canBookShipment = ($canBookShipment ?? false) && ! $isCcaActor;
+    $canBookShipment = ($canBookShipment ?? false) && ! $isCcaActor && ! $isPendingApproval;
     $eligibleCouriers = $eligibleCouriers ?? [];
     $canEditOrder = (bool) ($canEditOrder ?? false);
+    $canSubmitBankTransfer = (bool) ($canSubmitBankTransfer ?? false);
+    $latestBankTransfer = $latestBankTransfer ?? null;
+    $displayStatusLabel = $isPendingApproval ? 'Pending Approval' : $statusLabel;
     $discountLocked = $order->isDiscountLocked();
     $isCancelled = $order->isCancelled();
     $shipment = $order->shipment;
@@ -212,9 +218,14 @@
             <div>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                     <h3 class="mb-0">Order {{ $order->order_number }}</h3>
-                    <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-10 fs-13">
-                        {{ $statusLabel }}
+                    <span class="badge {{ $isPendingApproval ? 'bg-warning-subtle text-warning border border-warning' : 'bg-primary-subtle text-primary border border-primary' }} border-opacity-10 fs-13">
+                        {{ $displayStatusLabel }}
                     </span>
+                    @if ($isPendingApproval && $statusLabel !== 'Pending Approval')
+                        <span class="badge bg-light text-body border fs-13">
+                            Status: {{ $statusLabel }}
+                        </span>
+                    @endif
                     @if ($isCancelled)
                         <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-10 fs-13">
                             Cancelled
@@ -223,7 +234,11 @@
                 </div>
                 @unless ($canEditOrder ?? false)
                     <p class="fs-15 text-body mb-0">
-                        Operational order workspace for call-center and reseller actions.
+                        @if ($isPendingApproval)
+                            This order is Pending Approval. Order details are read-only until Admin reviews the payment.
+                        @else
+                            Operational order workspace for call-center and reseller actions.
+                        @endif
                     </p>
                 @endunless
             </div>
@@ -332,9 +347,9 @@
                 'canBanCustomer' => $canBanCustomer ?? false,
                 'canAssignCourier' => $canAssignCourier ?? false,
                 'shipmentBootstrap' => $shipmentBootstrap ?? null,
-                'canSubmitBankTransfer' => $authUser?->hasPermission('orders.update')
-                    && (! $isCcaActor || $isAssignedToActor)
-                    && ! $isCancelled,
+                'canSubmitBankTransfer' => $canSubmitBankTransfer,
+                'isPendingApproval' => $isPendingApproval,
+                'latestBankTransfer' => $latestBankTransfer,
             ])
 
         @else
@@ -589,9 +604,9 @@
                 </div>
 
                 @include('pages.orders.partials.ui-order-payment', [
-                    'canSubmitBankTransfer' => $authUser?->hasPermission('orders.update')
-                        && (! $isCcaActor || $isAssignedToActor)
-                        && ! $isCancelled,
+                    'canSubmitBankTransfer' => $canSubmitBankTransfer,
+                    'isPendingApproval' => $isPendingApproval,
+                    'latestBankTransfer' => $latestBankTransfer,
                 ])
 
                 @include('pages.orders.partials.ui-order-cca-assignment', [
@@ -754,6 +769,9 @@
             'banMode' => 'order',
         ])
     @endunless
+    @if ($canSubmitBankTransfer)
+        @include('pages.orders.partials.ui-bank-transfer-confirm-modal')
+    @endif
     @if ($canEditOrder && $canUpdateStatus && ! ($isCancelled && ! $canReactivate))
         @include('pages.orders.partials.ui-order-status-confirm-modal', [
             'order' => $order,
@@ -794,14 +812,130 @@
     <script>
     (function () {
         var fields = document.getElementById('orderBankTransferFields');
-        if (!fields) return;
+        var saveBtn = document.getElementById('saveOrderChangesBtn');
+        var bankForm = document.getElementById('orderBankTransferForm');
+        var confirmModal = document.getElementById('bankTransferConfirmModal');
+        var confirmBtn = document.getElementById('confirmBankTransferApprovalBtn');
+        var requestBtn = document.getElementById('requestBankTransferApprovalBtn');
 
-        document.querySelectorAll('[data-order-payment-method]').forEach(function (input) {
-            input.addEventListener('change', function () {
-                var isBank = input.value === 'bank' && input.checked;
-                fields.classList.toggle('hidden', !isBank);
+        function isBankSelected() {
+            var bank = document.getElementById('showPayBank');
+            return !!(bank && bank.checked);
+        }
+
+        function syncSaveButton() {
+            if (!saveBtn) return;
+            if (isBankSelected() && bankForm) {
+                saveBtn.textContent = 'Request Approval';
+                saveBtn.setAttribute('data-bank-transfer-mode', '1');
+            } else {
+                saveBtn.textContent = 'Save changes';
+                saveBtn.removeAttribute('data-bank-transfer-mode');
+            }
+        }
+
+        function openBankModal() {
+            if (!confirmModal) return;
+            confirmModal.classList.remove('hidden');
+        }
+
+        function closeBankModal() {
+            if (!confirmModal) return;
+            confirmModal.classList.add('hidden');
+        }
+
+        function submitBankTransfer() {
+            if (!bankForm) return;
+
+            var slip = document.getElementById('bankTransferSlip');
+            var reference = document.getElementById('bankTransferReference');
+            var amount = document.getElementById('bankTransferAmount');
+            var description = document.getElementById('bankTransferDescription');
+
+            if (slip && typeof slip.reportValidity === 'function') {
+                if (!slip.reportValidity() || !reference.reportValidity() || !amount.reportValidity() || !description.reportValidity()) {
+                    return;
+                }
+            }
+
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = bankForm.getAttribute('data-action');
+            form.enctype = 'multipart/form-data';
+            form.style.display = 'none';
+
+            var token = document.createElement('input');
+            token.type = 'hidden';
+            token.name = '_token';
+            token.value = bankForm.getAttribute('data-csrf');
+            form.appendChild(token);
+
+            [['reference_number', reference], ['amount', amount], ['description', description]].forEach(function (pair) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = pair[0];
+                input.value = pair[1] ? pair[1].value : '';
+                form.appendChild(input);
             });
+
+            if (slip && slip.files && slip.files[0]) {
+                var dt = new DataTransfer();
+                dt.items.add(slip.files[0]);
+                var fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.name = 'payment_slip';
+                fileInput.files = dt.files;
+                form.appendChild(fileInput);
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        if (fields) {
+            document.querySelectorAll('[data-order-payment-method]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    var isBank = input.value === 'bank' && input.checked;
+                    fields.classList.toggle('hidden', !isBank);
+                    syncSaveButton();
+                });
+            });
+        }
+
+        syncSaveButton();
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function (event) {
+                if (saveBtn.getAttribute('data-bank-transfer-mode') === '1') {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    openBankModal();
+                }
+            }, true);
+        }
+
+        if (requestBtn) {
+            requestBtn.addEventListener('click', function () {
+                openBankModal();
+            });
+        }
+
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', function () {
+                closeBankModal();
+                submitBankTransfer();
+            });
+        }
+
+        document.querySelectorAll('[data-close-modal="bankTransferConfirmModal"]').forEach(function (btn) {
+            btn.addEventListener('click', closeBankModal);
         });
+
+        if (confirmModal) {
+            confirmModal.addEventListener('click', function (e) {
+                if (e.target === confirmModal) closeBankModal();
+            });
+        }
     })();
     </script>
 @endpush

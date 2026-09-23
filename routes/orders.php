@@ -111,6 +111,10 @@ Route::prefix('orders')->group(function () {
         ->middleware('permission:orders.cca.assign')
         ->name('orders.bulk.unassign');
 
+    Route::get('/filter-products', [OrderController::class, 'filterProducts'])
+        ->middleware('permission:orders.view')
+        ->name('orders.filter-products');
+
     Route::get('/{order}', [OrderController::class, 'show'])
         ->middleware('permission:orders.view')
         ->where('order', '[A-Za-z0-9-]+')

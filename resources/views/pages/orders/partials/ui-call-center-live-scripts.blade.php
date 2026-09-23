@@ -7,11 +7,18 @@
         var statusFilter = filters.status !== '' && filters.status != null ? filters.status : 'all';
         var searchQuery = filters.search || '';
         var currentPage = (bootstrap.pagination && bootstrap.pagination.current_page) || 1;
+        var productSearchTimer = null;
+        var productSearchRequestId = 0;
 
         function isReseller() { return actor.role === 'reseller'; }
         function isCca() { return actor.role === 'cca'; }
         function canAssign() { return !!actor.can_assign; }
         function canTakeFromPool() { return !bootstrap.pool_lock; }
+
+        function selectedProductId() {
+            var productIdEl = document.getElementById('orderUiFilterProductId');
+            return productIdEl && productIdEl.value ? String(productIdEl.value) : '';
+        }
 
         function getCsrfToken() {
             var meta = document.querySelector('meta[name="csrf-token"]');
@@ -41,7 +48,6 @@
             overrides = overrides || {};
             var ccaEl = document.getElementById('orderUiFilterCca');
             var supplierEl = document.getElementById('orderUiFilterSupplier');
-            var presetEl = document.getElementById('orderUiFilterDatePreset');
             var fromEl = document.getElementById('orderUiFilterDateFrom');
             var toEl = document.getElementById('orderUiFilterDateTo');
             var state = {
@@ -51,11 +57,14 @@
                 tab: overrides.tab !== undefined ? overrides.tab : activeTab,
                 cca_id: overrides.cca_id !== undefined ? overrides.cca_id : (ccaEl && ccaEl.value !== 'all' ? ccaEl.value : ''),
                 supplier_id: overrides.supplier_id !== undefined ? overrides.supplier_id : (supplierEl && supplierEl.value !== 'all' ? supplierEl.value : ''),
-                date_preset: overrides.date_preset !== undefined ? overrides.date_preset : (presetEl && presetEl.value !== 'all' ? presetEl.value : ''),
+                product_id: overrides.product_id !== undefined ? overrides.product_id : selectedProductId(),
                 date_from: overrides.date_from !== undefined ? overrides.date_from : (fromEl ? fromEl.value : ''),
                 date_to: overrides.date_to !== undefined ? overrides.date_to : (toEl ? toEl.value : ''),
                 page: overrides.page !== undefined ? overrides.page : currentPage,
             };
+            if (overrides.date_preset !== undefined && overrides.date_preset !== '') {
+                state.date_preset = overrides.date_preset;
+            }
             var params = new URLSearchParams();
             Object.keys(state).forEach(function (key) {
                 var val = state[key];
@@ -150,13 +159,85 @@
             }).join('');
         }
 
+        function hideProductSuggestions() {
+            var list = document.getElementById('orderUiProductSuggestions');
+            var input = document.getElementById('orderUiFilterProduct');
+            if (list) list.classList.add('hidden');
+            if (input) input.setAttribute('aria-expanded', 'false');
+        }
+
+        function renderProductSuggestions(products) {
+            var list = document.getElementById('orderUiProductSuggestions');
+            var input = document.getElementById('orderUiFilterProduct');
+            if (!list || !input) return;
+
+            if (!products || !products.length) {
+                hideProductSuggestions();
+                return;
+            }
+
+            list.innerHTML = products.map(function (product) {
+                return '<li role="option" tabindex="-1" data-ui-product-id="' + escapeHtml(product.id) + '"' +
+                    ' data-ui-product-name="' + escapeHtml(product.name) + '">' +
+                    '<span class="order-ui-suggest-name">' + escapeHtml(product.name) + '</span>' +
+                    '<span class="order-ui-suggest-code">' + escapeHtml(product.supplier_name || '') + '</span></li>';
+            }).join('');
+            list.classList.remove('hidden');
+            input.setAttribute('aria-expanded', 'true');
+        }
+
+        async function searchProducts(query) {
+            var url = (bootstrap.routes && bootstrap.routes.filter_products)
+                ? bootstrap.routes.filter_products
+                : '/orders/filter-products';
+            var params = new URLSearchParams();
+            if (query) params.set('search', query);
+            var requestId = ++productSearchRequestId;
+            try {
+                var res = await fetch(url + (params.toString() ? '?' + params.toString() : ''), {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                var payload = await res.json().catch(function () { return {}; });
+                if (requestId !== productSearchRequestId) return;
+                if (!res.ok) {
+                    hideProductSuggestions();
+                    return;
+                }
+                renderProductSuggestions(payload.data || []);
+            } catch (err) {
+                if (requestId === productSearchRequestId) hideProductSuggestions();
+            }
+        }
+
+        function scheduleProductSearch(query) {
+            if (productSearchTimer) clearTimeout(productSearchTimer);
+            productSearchTimer = setTimeout(function () {
+                searchProducts(String(query || '').trim());
+            }, 250);
+        }
+
+        function selectProduct(productId, productName) {
+            var productIdEl = document.getElementById('orderUiFilterProductId');
+            var productInput = document.getElementById('orderUiFilterProduct');
+            if (productIdEl) productIdEl.value = String(productId);
+            if (productInput) productInput.value = productName || '';
+            hideProductSuggestions();
+            selectedOrderIds = [];
+            navigate({ product_id: String(productId), page: 1 });
+        }
+
         function populateFilterSelects() {
             var ccaSelect = document.getElementById('orderUiFilterCca');
             var supplierSelect = document.getElementById('orderUiFilterSupplier');
             var bulkCcaSelect = document.getElementById('orderUiBulkAssignCcaSelect');
-            var presetEl = document.getElementById('orderUiFilterDatePreset');
             var fromEl = document.getElementById('orderUiFilterDateFrom');
             var toEl = document.getElementById('orderUiFilterDateTo');
+            var productIdEl = document.getElementById('orderUiFilterProductId');
+            var productInput = document.getElementById('orderUiFilterProduct');
+            var selectedProduct = bootstrap.selected_product || null;
 
             if (ccaSelect) {
                 ccaSelect.innerHTML = '<option value="all">All CCAs</option>' + (bootstrap.ccas || []).map(function (cca) {
@@ -175,7 +256,16 @@
                     return '<option value="' + escapeHtml(cca.id) + '">' + escapeHtml(cca.name) + '</option>';
                 }).join('');
             }
-            if (presetEl) presetEl.value = filters.date_preset || 'all';
+            if (productIdEl) {
+                productIdEl.value = selectedProduct && selectedProduct.id
+                    ? String(selectedProduct.id)
+                    : (filters.product_id || '');
+            }
+            if (productInput) {
+                productInput.value = selectedProduct && selectedProduct.name
+                    ? selectedProduct.name
+                    : '';
+            }
             if (fromEl) fromEl.value = filters.date_from || '';
             if (toEl) toEl.value = filters.date_to || '';
         }
@@ -411,14 +501,14 @@
                 tab: isCca() ? 'assigned' : 'all',
                 cca_id: isCca() ? String(actor.id || '') : '',
                 supplier_id: '',
-                date_preset: '',
+                product_id: '',
                 date_from: '',
                 date_to: '',
                 page: 1
             });
         });
 
-        ['orderUiFilterCca', 'orderUiFilterSupplier', 'orderUiFilterDatePreset'].forEach(function (id) {
+        ['orderUiFilterCca', 'orderUiFilterSupplier'].forEach(function (id) {
             var el = document.getElementById(id);
             if (!el) return;
             el.addEventListener('change', function () {
@@ -443,13 +533,52 @@
                     status: '',
                     cca_id: isCca() ? String(actor.id || '') : '',
                     supplier_id: '',
-                    date_preset: '',
+                    product_id: '',
                     date_from: '',
                     date_to: '',
                     page: 1
                 });
             });
         }
+
+        var productInput = document.getElementById('orderUiFilterProduct');
+        var productList = document.getElementById('orderUiProductSuggestions');
+
+        if (productInput) {
+            productInput.addEventListener('input', function () {
+                var productIdEl = document.getElementById('orderUiFilterProductId');
+                // Typing invalidates a prior selection until a suggestion is chosen again.
+                if (productIdEl && productIdEl.value) {
+                    productIdEl.value = '';
+                }
+                scheduleProductSearch(productInput.value);
+            });
+            productInput.addEventListener('focus', function () {
+                scheduleProductSearch(productInput.value);
+            });
+            productInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') hideProductSuggestions();
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    hideProductSuggestions();
+                }
+            });
+        }
+
+        if (productList) {
+            productList.addEventListener('click', function (e) {
+                var option = e.target.closest('[data-ui-product-id]');
+                if (!option) return;
+                selectProduct(
+                    option.getAttribute('data-ui-product-id'),
+                    option.getAttribute('data-ui-product-name')
+                );
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.order-ui-autocomplete')) hideProductSuggestions();
+        });
 
         document.getElementById('orderUiWorkspaceContent').addEventListener('click', function (e) {
             var pageBtn = e.target.closest('[data-ui-page-nav]');

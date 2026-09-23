@@ -793,6 +793,7 @@
             { value: 'hold', label: 'Hold' },
             { value: 'confirmed', label: 'Confirmed' },
             { value: 'cancelled', label: 'Cancelled' },
+            { value: 'PENDING_APPROVAL', label: 'Pending Approval' },
             { value: 'expiring', label: 'Expiring' },
         ];
 

@@ -4,9 +4,13 @@ namespace App\Services\Order;
 
 use Feeder\Core\Enums\OrderAssignmentState;
 use Feeder\Core\Enums\OrderCcaAssignmentOrigin;
+use Feeder\Core\Enums\OrderPaymentMethod;
+use Feeder\Core\Enums\OrderPaymentReviewStatus;
 use Feeder\Core\Enums\OrderSource;
 use Feeder\Core\Enums\OrderStatus;
+use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Models\Order;
+use Feeder\Core\Models\Product;
 use Feeder\Core\Models\User;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Feeder\Core\Services\Order\OrderCcaAssignmentService;
@@ -18,6 +22,8 @@ use Illuminate\Support\Collection;
 
 class ResellerOrderListService
 {
+    public const FILTER_PENDING_APPROVAL = 'PENDING_APPROVAL';
+
     private const PER_PAGE = 25;
 
     public function __construct(
@@ -36,6 +42,7 @@ class ResellerOrderListService
                 'items',
                 'creator.role',
                 'shipment.courier',
+                'paymentSubmissions' => fn ($query) => $query->latest('id'),
                 'ccaAssignments' => fn ($query) => $query->whereNull('unassigned_at')->latest('id'),
             ])
             ->latest('orders.id')
@@ -64,7 +71,7 @@ class ResellerOrderListService
     }
 
     /**
-     * Status counts for the current list filters (tab / search / CCA / supplier / date),
+     * Status counts for the current list filters (tab / search / CCA / supplier / product / date),
      * excluding the selected status chip so every chip keeps a meaningful total.
      *
      * Keys match status filter option values (enum values) plus "all".
@@ -87,6 +94,13 @@ class ResellerOrderListService
             $counts['all'] += $count;
         }
 
+        $counts[self::FILTER_PENDING_APPROVAL] = (clone $this->filteredQuery($actor, $request, ignoreStatus: true))
+            ->whereHas('paymentSubmissions', function (Builder $query): void {
+                $query->where('method', OrderPaymentMethod::BANK_TRANSFER)
+                    ->where('review_status', OrderPaymentReviewStatus::PENDING_REVIEW);
+            })
+            ->count();
+
         return $counts;
     }
 
@@ -98,6 +112,7 @@ class ResellerOrderListService
      *     customer_phone: string,
      *     status: string,
      *     supplier_id: string,
+     *     product_id: string,
      *     date_from: string,
      *     date_to: string,
      *     date_preset: string,
@@ -116,6 +131,7 @@ class ResellerOrderListService
             'customer_phone' => trim((string) $request->input('customer_phone', '')),
             'status' => trim((string) $request->input('status', '')),
             'supplier_id' => trim((string) $request->input('supplier_id', '')),
+            'product_id' => trim((string) $request->input('product_id', '')),
             'date_from' => trim((string) $request->input('date_from', '')),
             'date_to' => trim((string) $request->input('date_to', '')),
             'date_preset' => trim((string) $request->input('date_preset', '')),
@@ -178,6 +194,7 @@ class ResellerOrderListService
                 'can_update_discount' => ! $isCca && $actor->hasPermission('orders.discount.update'),
             ],
             'filters' => $filters,
+            'selected_product' => $this->selectedProductFilter($actor, $filters['product_id']),
             'counts' => $counts,
             'status_counts' => $statusCounts,
             'pagination' => [
@@ -208,8 +225,40 @@ class ResellerOrderListService
                 'bulk_pool' => route('orders.bulk.pool'),
                 'bulk_unassign' => route('orders.bulk.unassign'),
                 'claim' => url('/orders'),
+                'filter_products' => route('orders.filter-products'),
             ],
         ];
+    }
+
+    /**
+     * Search products the reseller (or CCA via company owner) is allowed to work with.
+     * Reuses assigned-supplier + allowed-market visibility rules from the product catalog.
+     *
+     * @return Collection<int, array{id: int, name: string, supplier_name: string}>
+     */
+    public function searchFilterProducts(User $actor, ?string $search = null, int $limit = 25): Collection
+    {
+        $query = $this->accessibleProductsQuery($actor)->orderBy('name');
+
+        $search = trim((string) $search);
+
+        if ($search !== '') {
+            $query->where(function (Builder $inner) use ($search): void {
+                $inner->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('slug', 'like', '%'.$search.'%');
+            });
+        }
+
+        return $query
+            ->with('supplier.company')
+            ->limit(max(1, min(50, $limit)))
+            ->get()
+            ->map(fn (Product $product) => [
+                'id' => (int) $product->id,
+                'name' => (string) $product->name,
+                'supplier_name' => $product->supplier?->company?->name ?? 'Supplier #'.$product->supplier_id,
+            ])
+            ->values();
     }
 
     /**
@@ -277,6 +326,29 @@ class ResellerOrderListService
             ? $order->status->value
             : (string) $order->status);
 
+        $pendingApproval = $order->relationLoaded('paymentSubmissions')
+            ? $order->paymentSubmissions->contains(function ($submission): bool {
+                $method = $submission->method instanceof OrderPaymentMethod
+                    ? $submission->method
+                    : OrderPaymentMethod::tryFrom((string) $submission->method);
+                $review = $submission->review_status instanceof OrderPaymentReviewStatus
+                    ? $submission->review_status
+                    : OrderPaymentReviewStatus::tryFrom((string) $submission->review_status);
+
+                return $method === OrderPaymentMethod::BANK_TRANSFER
+                    && $review === OrderPaymentReviewStatus::PENDING_REVIEW;
+            })
+            : $order->hasPendingPaymentApproval();
+
+        $statusLabel = $order->status instanceof OrderStatus
+            ? $order->status->label()
+            : (string) $order->status;
+
+        if ($pendingApproval) {
+            $statusLabel = 'Pending Approval';
+            $statusValue = 'pending-approval';
+        }
+
         return [
             'id' => (int) $order->id,
             'uuid' => (string) $order->uuid,
@@ -300,9 +372,11 @@ class ResellerOrderListService
             'supplierId' => (int) $order->supplier_id,
             'supplierName' => $order->supplier?->company?->name ?? 'Supplier #'.$order->supplier_id,
             'status' => $statusValue,
-            'statusLabel' => $order->status instanceof OrderStatus
-                ? $order->status->label()
-                : (string) $order->status,
+            'statusLabel' => $statusLabel,
+            'pendingApproval' => $pendingApproval,
+            'operationalStatus' => strtolower($order->status instanceof OrderStatus
+                ? $order->status->value
+                : (string) $order->status),
             'fromPool' => $fromPool,
             'poolStatusChanged' => $poolStatusChanged,
             'createdAt' => optional($order->created_at)?->toIso8601String(),
@@ -367,13 +441,20 @@ class ResellerOrderListService
      */
     public function statusFilterOptions(): array
     {
-        return array_map(
+        $options = array_map(
             static fn (OrderStatus $status) => [
                 'value' => $status->value,
                 'label' => $status->label(),
             ],
             OrderStatus::cases()
         );
+
+        $options[] = [
+            'value' => self::FILTER_PENDING_APPROVAL,
+            'label' => 'Pending Approval',
+        ];
+
+        return $options;
     }
 
     /**
@@ -463,12 +544,21 @@ class ResellerOrderListService
         }
 
         if (! $ignoreStatus && $filters['status'] !== '') {
-            $status = OrderStatus::tryFrom($filters['status'])
-                ?? OrderStatus::tryFrom(strtoupper($filters['status']));
-            if ($status !== null) {
-                $query->where('status', $status->value);
+            $statusFilter = strtoupper(trim($filters['status']));
+
+            if ($statusFilter === self::FILTER_PENDING_APPROVAL) {
+                $query->whereHas('paymentSubmissions', function (Builder $inner): void {
+                    $inner->where('method', OrderPaymentMethod::BANK_TRANSFER)
+                        ->where('review_status', OrderPaymentReviewStatus::PENDING_REVIEW);
+                });
             } else {
-                $query->whereRaw('1 = 0');
+                $status = OrderStatus::tryFrom($filters['status'])
+                    ?? OrderStatus::tryFrom($statusFilter);
+                if ($status !== null) {
+                    $query->where('status', $status->value);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             }
         }
 
@@ -487,6 +577,7 @@ class ResellerOrderListService
             }
         }
 
+        $this->applyProductFilter($query, $actor, $filters['product_id']);
         $this->applyDateFilters($query, $filters);
 
         // Pool / unassigned rows have no CCA; ignore the CCA filter on those tabs.
@@ -561,6 +652,106 @@ class ResellerOrderListService
         if ($state !== null) {
             $query->assignmentState($state);
         }
+    }
+
+    /**
+     * Restrict to orders that contain at least one line for the selected product.
+     * Unauthorized / inaccessible product ids yield an empty result set.
+     */
+    private function applyProductFilter(Builder $query, User $actor, string $productIdFilter): void
+    {
+        if ($productIdFilter === '') {
+            return;
+        }
+
+        $productId = (int) $productIdFilter;
+
+        if ($productId <= 0 || ! $this->isAccessibleProduct($actor, $productId)) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereHas('items', function (Builder $items) use ($productId): void {
+            $items->where('product_id', $productId);
+        });
+    }
+
+    /**
+     * @return array{id: int, name: string}|null
+     */
+    private function selectedProductFilter(User $actor, string $productIdFilter): ?array
+    {
+        if ($productIdFilter === '') {
+            return null;
+        }
+
+        $productId = (int) $productIdFilter;
+
+        if ($productId <= 0) {
+            return null;
+        }
+
+        $product = $this->accessibleProductsQuery($actor)
+            ->whereKey($productId)
+            ->first(['id', 'name']);
+
+        if ($product === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $product->id,
+            'name' => (string) $product->name,
+        ];
+    }
+
+    private function isAccessibleProduct(User $actor, int $productId): bool
+    {
+        return $this->accessibleProductsQuery($actor)
+            ->whereKey($productId)
+            ->exists();
+    }
+
+    /**
+     * Products from assigned suppliers in the reseller company's allowed markets.
+     */
+    private function accessibleProductsQuery(User $actor): Builder
+    {
+        $commercial = $this->resolveCommercialReseller($actor);
+        $allowedMarketIds = $this->allowedMarketIds($actor);
+        $assignedSupplierIds = $this->supplierAssignmentService
+            ->assignedSupplierIds($commercial)
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($assignedSupplierIds === [] || $allowedMarketIds === []) {
+            return Product::query()->whereRaw('1 = 0');
+        }
+
+        return Product::query()
+            ->whereIn('supplier_id', $assignedSupplierIds)
+            ->whereIn('market_id', $allowedMarketIds)
+            ->where('status', ProductStatus::ACTIVE)
+            ->where('system_visible', true);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function allowedMarketIds(User $actor): array
+    {
+        $actor->loadMissing('company');
+        $company = $actor->company;
+
+        if ($company === null) {
+            return [];
+        }
+
+        return $company->allowedMarkets()
+            ->pluck('markets.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 
     /**

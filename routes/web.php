@@ -46,6 +46,10 @@ Route::middleware('auth')->group(function () {
         ->where('uuid', '[A-Za-z0-9]+')
         ->name('files.view');
 
+    Route::get('/files/{uuid}/download', [FileProxyController::class, 'download'])
+        ->where('uuid', '[A-Za-z0-9]+')
+        ->name('files.download');
+
     /*
     |--------------------------------------------------------------------------
     | Call Center Agents

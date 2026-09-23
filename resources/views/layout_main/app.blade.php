@@ -43,7 +43,6 @@
         <div class="logo position-relative d-flex align-items-center justify-content-between">
             <a href="index.html" class="d-block text-decoration-none position-relative">
                 <img src="{{ asset('assets/images/logo-icon.png') }}" alt="logo-icon" />
-                <span class="logo-text text-secondary fw-semibold">Fila</span>
             </a>
             <button
                 class="sidebar-burger-menu-close bg-transparent py-3 border-0 opacity-0 z-n1 position-absolute top-50 end-0 translate-middle-y"
@@ -113,7 +112,7 @@
                                                     {{ $child->getTitle() }}
                                                 </a>
                                             </li>
-                                        @elseif (! $child->getRoute())
+                                        @elseif (!$child->getRoute())
                                             <li class="menu-item">
                                                 <span class="menu-link">
                                                     {{ $child->getTitle() }}

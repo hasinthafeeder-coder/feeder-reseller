@@ -49,7 +49,7 @@
                 <button type="submit" class="btn btn-outline-primary w-100">Assign CCA</button>
             </form>
 
-            <button type="button" class="btn btn-light border w-100 mb-4" data-open-order-ui-modal="callCenterAssignModal">
+            <button type="button" class="btn btn-light border w-100 mt-2 mb-2" data-open-order-ui-modal="callCenterAssignModal">
                 Send to Order Pool
             </button>
         @endif

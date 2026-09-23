@@ -49,4 +49,30 @@ return [
         'tenant' => env('CURFOX_TENANT', 'royalexpress'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | TransExpress
+    |--------------------------------------------------------------------------
+    |
+    | Global base URL for TransExpress booking. Supplier email/password/token
+    | live in supplier_courier_accounts — never here.
+    |
+    */
+    'transexpress' => [
+        'base_url' => env('TRANSEXPRESS_BASE_URL', 'https://portal.transexpress.lk/api'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fardar Domestic
+    |--------------------------------------------------------------------------
+    |
+    | Global base URL for Fardar form-urlencoded create-parcel requests.
+    | Supplier Client ID / API Key live in supplier_courier_accounts — never here.
+    |
+    */
+    'fardar' => [
+        'base_url' => env('FARDAR_BASE_URL', 'https://www.fdedomestic.com'),
+    ],
+
 ];

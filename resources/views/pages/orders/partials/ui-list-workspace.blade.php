@@ -22,6 +22,7 @@
             'status_counts' => ['all' => 0],
             'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 25, 'total' => 0],
             'filters' => [],
+            'selected_product' => null,
             'actor' => ['role' => 'reseller', 'can_assign' => false, 'can_claim' => false, 'can_create' => false],
             'pool_lock' => null,
             'routes' => [
@@ -31,6 +32,7 @@
                 'bulk_assign' => route('orders.bulk.assign'),
                 'bulk_pool' => route('orders.bulk.pool'),
                 'claim' => url('/orders'),
+                'filter_products' => route('orders.filter-products'),
             ],
         ];
         $orderUiListPayload['workspace'] = 'call-center';
@@ -122,16 +124,19 @@
                             <option value="all">All suppliers</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="label" for="orderUiFilterDatePreset">Date</label>
-                        <select id="orderUiFilterDatePreset" class="form-select form-control">
-                            <option value="all">All time</option>
-                            <option value="today">Today</option>
-                            <option value="yesterday">Yesterday</option>
-                            <option value="last7">Last 7 Days</option>
-                            <option value="last30">Last 30 Days</option>
-                            <option value="custom">Custom</option>
-                        </select>
+                    <div class="order-ui-autocomplete">
+                        <label class="label" for="orderUiFilterProduct">Product</label>
+                        <input type="hidden" id="orderUiFilterProductId"
+                            value="{{ $orderUiListPayload['filters']['product_id'] ?? '' }}">
+                        <input type="search" id="orderUiFilterProduct" class="form-control"
+                            placeholder="Search products by name..."
+                            autocomplete="off"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded="false"
+                            aria-controls="orderUiProductSuggestions"
+                            value="{{ $orderUiListPayload['selected_product']['name'] ?? '' }}">
+                        <ul id="orderUiProductSuggestions" class="order-ui-autocomplete-list hidden" role="listbox"></ul>
                     </div>
                     <div>
                         <label class="label" for="orderUiFilterDateFrom">Date from</label>

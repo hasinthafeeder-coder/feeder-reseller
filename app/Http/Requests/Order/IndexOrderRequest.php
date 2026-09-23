@@ -22,6 +22,7 @@ class IndexOrderRequest extends FormRequest
             'customer_phone' => ['nullable', 'string', 'max:40'],
             'status' => ['nullable', 'string'],
             'supplier_id' => ['nullable', 'integer'],
+            'product_id' => ['nullable', 'integer'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'date_preset' => ['nullable', 'string', Rule::in(['all', 'today', 'yesterday', 'last7', 'last30', 'custom'])],

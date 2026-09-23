@@ -174,6 +174,10 @@
     .order-create-prototype .badge-status.is-hold,
     .orders-proto-modal .badge-status.is-hold { background: #fff3cd; color: #664d03; }
 
+    .orders-list-prototype .badge-status.is-pending-approval,
+    .order-create-prototype .badge-status.is-pending-approval,
+    .orders-proto-modal .badge-status.is-pending-approval { background: #fff3cd; color: #664d03; }
+
     .orders-list-prototype .badge-status.is-expiring,
     .order-create-prototype .badge-status.is-expiring,
     .orders-proto-modal .badge-status.is-expiring { background: rgba(239, 73, 35, 0.12); color: #ef4923; }
