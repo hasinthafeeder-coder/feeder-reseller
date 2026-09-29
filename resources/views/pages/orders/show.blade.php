@@ -71,7 +71,13 @@
         && $orderInPool
         && $authUser?->hasPermission('orders.update');
     $canBookShipment = ($canBookShipment ?? false) && ! $isCcaActor && ! $isPendingApproval;
-    $eligibleCouriers = $eligibleCouriers ?? [];
+    $orderStatusForCourier = $order->status instanceof OrderStatus
+        ? $order->status
+        : OrderStatus::tryFrom((string) $order->status);
+    $canRetryCourierBooking = $canBookShipment
+        && $order->shipment === null
+        && $orderStatusForCourier === OrderStatus::CONFIRMED;
+    $courierBookingError = $courierBookingError ?? null;
     $canEditOrder = (bool) ($canEditOrder ?? false);
     $canSubmitBankTransfer = (bool) ($canSubmitBankTransfer ?? false);
     $latestBankTransfer = $latestBankTransfer ?? null;
@@ -345,8 +351,6 @@
                 'formAction' => $catalogRoutes['update'] ?? route('orders.update', $order),
                 'catalogRoutes' => $catalogRoutes ?? [],
                 'canBanCustomer' => $canBanCustomer ?? false,
-                'canAssignCourier' => $canAssignCourier ?? false,
-                'shipmentBootstrap' => $shipmentBootstrap ?? null,
                 'canSubmitBankTransfer' => $canSubmitBankTransfer,
                 'isPendingApproval' => $isPendingApproval,
                 'latestBankTransfer' => $latestBankTransfer,
@@ -699,57 +703,31 @@
                             @empty
                                 <div class="text-body fs-13">No shipment events.</div>
                             @endforelse
-                        @elseif ($canBookShipment)
-                            <form method="POST" action="{{ route('orders.shipment.book', $order) }}" id="shipmentBookingForm">
-                                @csrf
-                                <div class="mb-3">
-                                    <label for="shipmentCourier" class="label fs-14 mb-2">Courier</label>
-                                    <select class="form-select form-control" id="shipmentCourier" name="courier_id" required>
-                                        <option value="">Select courier</option>
-                                        @foreach ($eligibleCouriers as $courier)
-                                            <option value="{{ $courier['id'] }}"
-                                                @selected((string) old('courier_id') === (string) $courier['id'])>
-                                                {{ $courier['name'] }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="shipmentService" class="label fs-14 mb-2">Courier service</label>
-                                    <select class="form-select form-control" id="shipmentService" name="courier_service_id" required disabled>
-                                        <option value="">Select service</option>
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="shipmentDistrict" class="label fs-14 mb-2">Destination State / District</label>
-                                    <select class="form-select form-control" id="shipmentDistrict" name="district" required disabled>
-                                        <option value="">Select district</option>
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="shipmentCity" class="label fs-14 mb-2">City</label>
-                                    <select class="form-select form-control" id="shipmentCity" name="courier_city_id" required disabled>
-                                        <option value="">Select city</option>
-                                    </select>
-                                </div>
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span class="text-body">Courier fee</span>
-                                    <span class="fw-medium" id="shipmentFeePreview">—</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-body">Customer payable</span>
-                                    <span class="fw-medium" id="shipmentPayablePreview">—</span>
-                                </div>
-                                <div class="text-danger fs-13 mb-3 d-none" id="shipmentLookupError"></div>
-                                <button type="submit" class="btn btn-primary text-white w-100" id="bookShipmentBtn" disabled>
-                                    Book Shipment
-                                </button>
-                            </form>
-                            @if ($eligibleCouriers === [])
-                                <div class="alert alert-warning mt-3 mb-0" role="alert">
-                                    No eligible couriers for this order's supplier and market. Ensure supplier courier accounts and market pricing are configured.
+                        @elseif ($canRetryCourierBooking)
+                            @if ($courierBookingError)
+                                <div class="alert alert-danger mb-3" role="alert" id="courierBookingError">
+                                    {{ $courierBookingError }}
                                 </div>
                             @endif
+                            <p class="fs-14 mb-3">
+                                This order is confirmed and does not have a waybill yet. Retry booking uses the saved courier, district, and city.
+                            </p>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <div class="fs-13 text-body mb-1">Courier</div>
+                                    <div class="fw-medium">{{ $order->draftCourier?->name ?? '—' }}</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="fs-13 text-body mb-1">City</div>
+                                    <div class="fw-medium">{{ $order->draftCourierCity?->city_name ?? '—' }}</div>
+                                </div>
+                            </div>
+                            <form method="POST" action="{{ route('orders.shipment.book', $order) }}" id="retryCourierBookingForm">
+                                @csrf
+                                <button type="submit" class="btn btn-primary text-white" id="retryCourierBookingBtn">
+                                    Retry courier booking
+                                </button>
+                            </form>
                         @else
                             <div class="text-body">No shipment booked yet.</div>
                         @endif
@@ -804,8 +782,6 @@
             'catalogRoutes' => $catalogRoutes ?? [],
             'duplicateOrders' => $duplicateOrders ?? [],
             'oldItems' => $oldItems ?? [],
-            'canAssignCourier' => $canAssignCourier ?? false,
-            'shipmentBootstrap' => $shipmentBootstrap ?? null,
         ])
     @endif
     @include('pages.orders.partials.ui-scripts')
@@ -939,267 +915,3 @@
     })();
     </script>
 @endpush
-
-@if (! $shipmentBooked && $canBookShipment)
-@push('scripts')
-<script>
-(function () {
-    const currencyCode = @json($currency?->code ?? $order->currency_code_snapshot ?? '');
-    const oldCourierId = @json(old('courier_id'));
-    const oldServiceId = @json(old('courier_service_id'));
-    const oldDistrict = @json(old('district'));
-    const oldCityId = @json(old('courier_city_id'));
-
-    const courierSelect = document.getElementById('shipmentCourier');
-    const serviceSelect = document.getElementById('shipmentService');
-    const districtSelect = document.getElementById('shipmentDistrict');
-    const citySelect = document.getElementById('shipmentCity');
-    const feeEl = document.getElementById('shipmentFeePreview');
-    const payableEl = document.getElementById('shipmentPayablePreview');
-    const errorEl = document.getElementById('shipmentLookupError');
-    const bookBtn = document.getElementById('bookShipmentBtn');
-    const form = document.getElementById('shipmentBookingForm');
-
-    if (!courierSelect || !form) {
-        return;
-    }
-
-    let bookingSubmitted = false;
-
-    function formatMoney(amount) {
-        const value = Number(amount);
-        if (Number.isNaN(value)) {
-            return '—';
-        }
-        const formatted = value.toFixed(2);
-        return currencyCode ? (currencyCode + ' ' + formatted) : formatted;
-    }
-
-    function showError(message) {
-        if (!errorEl) {
-            return;
-        }
-        errorEl.textContent = message || '';
-        errorEl.classList.toggle('d-none', !message);
-    }
-
-    function resetSelect(select, placeholder, enabled) {
-        select.innerHTML = '';
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = placeholder;
-        select.appendChild(option);
-        select.disabled = !enabled;
-        select.value = '';
-    }
-
-    function updateBookButton() {
-        bookBtn.disabled = !(
-            courierSelect.value
-            && serviceSelect.value
-            && districtSelect.value
-            && citySelect.value
-            && !bookingSubmitted
-        );
-    }
-
-    async function fetchJson(url) {
-        const response = await fetch(url, {
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            credentials: 'same-origin',
-        });
-
-        const payload = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-            const firstError = payload?.errors
-                ? Object.values(payload.errors).flat()[0]
-                : null;
-            throw new Error(firstError || payload.message || 'Lookup failed.');
-        }
-
-        return payload.data || [];
-    }
-
-    async function loadFeePreview(courierId) {
-        if (!courierId) {
-            feeEl.textContent = '—';
-            payableEl.textContent = '—';
-            return;
-        }
-
-        try {
-            const data = await fetchJson(
-                @json(route('orders.courier-fee-preview', $order))
-                + '?courier_id=' + encodeURIComponent(courierId)
-            );
-            feeEl.textContent = formatMoney(data.courier_fee_amount);
-            payableEl.textContent = formatMoney(data.customer_payable_amount);
-            showError('');
-        } catch (error) {
-            feeEl.textContent = '—';
-            payableEl.textContent = '—';
-            showError(error.message || 'Unable to calculate courier fee.');
-        }
-    }
-
-    async function loadServices(courierId, selectedId) {
-        resetSelect(serviceSelect, 'Select service', false);
-        resetSelect(districtSelect, 'Select district', false);
-        resetSelect(citySelect, 'Select city', false);
-        updateBookButton();
-
-        if (!courierId) {
-            return;
-        }
-
-        const services = await fetchJson(
-            @json(route('orders.courier-services', $order))
-            + '?courier_id=' + encodeURIComponent(courierId)
-        );
-
-        resetSelect(serviceSelect, 'Select service', true);
-        services.forEach((service) => {
-            const option = document.createElement('option');
-            option.value = String(service.id);
-            option.textContent = service.name;
-            if (selectedId && String(selectedId) === String(service.id)) {
-                option.selected = true;
-            }
-            serviceSelect.appendChild(option);
-        });
-        updateBookButton();
-    }
-
-    async function loadDistricts(serviceId, selectedDistrict) {
-        resetSelect(districtSelect, 'Select district', false);
-        resetSelect(citySelect, 'Select city', false);
-        updateBookButton();
-
-        if (!serviceId) {
-            return;
-        }
-
-        const districts = await fetchJson(
-            @json(route('orders.courier-districts', $order))
-            + '?courier_service_id=' + encodeURIComponent(serviceId)
-        );
-
-        resetSelect(districtSelect, 'Select district', true);
-        districts.forEach((row) => {
-            const option = document.createElement('option');
-            const stateId = row.id && Number(row.id) > 0 ? String(row.id) : '';
-            const name = row.name || row.district || '';
-            option.value = stateId || name;
-            option.textContent = name;
-            option.dataset.name = name;
-            if (selectedDistrict && (selectedDistrict === name || selectedDistrict === stateId)) {
-                option.selected = true;
-            }
-            districtSelect.appendChild(option);
-        });
-        updateBookButton();
-    }
-
-    async function loadCities(serviceId, stateIdOrDistrict, selectedCityId) {
-        resetSelect(citySelect, 'Select city', false);
-        updateBookButton();
-
-        if (!serviceId || !stateIdOrDistrict) {
-            return;
-        }
-
-        let url = @json(route('orders.courier-cities', $order))
-            + '?courier_service_id=' + encodeURIComponent(serviceId);
-        const numericStateId = Number(stateIdOrDistrict);
-        if (Number.isInteger(numericStateId) && numericStateId > 0) {
-            url += '&courier_state_id=' + encodeURIComponent(numericStateId);
-        } else {
-            url += '&district=' + encodeURIComponent(stateIdOrDistrict);
-        }
-
-        const cities = await fetchJson(url);
-
-        resetSelect(citySelect, 'Select city', true);
-        cities.forEach((city) => {
-            const option = document.createElement('option');
-            option.value = String(city.id);
-            option.textContent = city.city_name;
-            if (selectedCityId && String(selectedCityId) === String(city.id)) {
-                option.selected = true;
-            }
-            citySelect.appendChild(option);
-        });
-        updateBookButton();
-    }
-
-    courierSelect.addEventListener('change', async () => {
-        showError('');
-        try {
-            await loadServices(courierSelect.value);
-            await loadFeePreview(courierSelect.value);
-        } catch (error) {
-            showError(error.message || 'Unable to load courier services.');
-        }
-        updateBookButton();
-    });
-
-    serviceSelect.addEventListener('change', async () => {
-        showError('');
-        try {
-            await loadDistricts(serviceSelect.value);
-        } catch (error) {
-            showError(error.message || 'Unable to load districts.');
-        }
-        updateBookButton();
-    });
-
-    districtSelect.addEventListener('change', async () => {
-        showError('');
-        try {
-            await loadCities(serviceSelect.value, districtSelect.value);
-        } catch (error) {
-            showError(error.message || 'Unable to load cities.');
-        }
-        updateBookButton();
-    });
-
-    citySelect.addEventListener('change', updateBookButton);
-
-    form.addEventListener('submit', () => {
-        if (bookingSubmitted) {
-            return false;
-        }
-        bookingSubmitted = true;
-        bookBtn.disabled = true;
-        bookBtn.textContent = 'Booking…';
-    });
-
-    (async function restoreOldSelection() {
-        if (!oldCourierId) {
-            updateBookButton();
-            return;
-        }
-
-        courierSelect.value = String(oldCourierId);
-        try {
-            await loadFeePreview(oldCourierId);
-            await loadServices(oldCourierId, oldServiceId);
-            if (oldServiceId) {
-                await loadDistricts(oldServiceId, oldDistrict);
-                if (oldDistrict) {
-                    await loadCities(oldServiceId, oldDistrict, oldCityId);
-                }
-            }
-        } catch (error) {
-            showError(error.message || 'Unable to restore courier selection.');
-        }
-        updateBookButton();
-    })();
-})();
-</script>
-@endpush
-@endif

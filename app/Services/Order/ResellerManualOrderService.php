@@ -3,6 +3,7 @@
 namespace App\Services\Order;
 use Feeder\Core\Enums\OrderCcaAssignmentOrigin;
 use Feeder\Core\Enums\OrderSource;
+use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Enums\OrderType;
 use Feeder\Core\Exceptions\ConflictingCustomerIdentityException;
 use Feeder\Core\Exceptions\DuplicateOrderWarningException;
@@ -11,13 +12,16 @@ use Feeder\Core\Models\Order;
 use Feeder\Core\Models\ProductVariant;
 use Feeder\Core\Models\User;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
+use Feeder\Core\Services\Order\DraftOrderCourierBookingService;
 use Feeder\Core\Services\Order\OrderCcaAssignmentService;
 use Feeder\Core\Services\Order\OrderCourierLookupService;
 use Feeder\Core\Services\Order\OrderService;
+use Feeder\Core\Services\Order\OrderStatusService;
 use Feeder\Core\Support\ResellerProductPricing;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Reseller Portal write adapter for manual order creation.
@@ -27,8 +31,9 @@ use InvalidArgumentException;
  * Selling prices are resolved from ProductVariant - never trusted from the browser.
  * CCA identity for auto-assignment is taken from the authenticated actor only.
  *
- * Confirm Order and Send to Call Center both create NEW + PENDING.
- * Confirm does not transition to CONFIRMED and does not book a shipment.
+ * Send to Call Center creates NEW + PENDING with the chosen assignment.
+ * Confirm Order creates NEW + PENDING, books the draft courier, then
+ * transitions to CONFIRMED only after a successful waybill.
  */
 
 class ResellerManualOrderService
@@ -44,6 +49,8 @@ class ResellerManualOrderService
         private readonly OrderCcaAssignmentService $ccaAssignmentService,
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly OrderCourierLookupService $courierLookupService,
+        private readonly DraftOrderCourierBookingService $draftCourierBookingService,
+        private readonly OrderStatusService $orderStatusService,
     ) {}
 
     /**
@@ -114,6 +121,9 @@ class ResellerManualOrderService
             districtName: $districtName,
             cityName: $cityName !== '' ? $cityName : null,
         );
+        if ($intent === self::INTENT_CONFIRM) {
+            $this->assertConfirmCourierDraftReady($draft);
+        }
         if ($draft['city_name'] !== null && $cityName === '') {
             $cityName = $draft['city_name'];
         }
@@ -209,8 +219,11 @@ class ResellerManualOrderService
         } elseif ($intent === self::INTENT_SEND_TO_CALL_CENTER) {
             $order = $this->applyResellerSendAssignment($actor, $order, $input);
         }
-        // INTENT_CONFIRM intentionally stays PENDING. Courier booking / CONFIRMED
-        // is a separate future workflow.
+
+        if ($intent === self::INTENT_CONFIRM) {
+            $order = $this->confirmWithCourierBooking($actor, $order);
+        }
+
         return $order->fresh([
             'items',
             'cca',
@@ -221,6 +234,99 @@ class ResellerManualOrderService
             'draftCourier',
             'draftCourierService',
             'draftCourierCity',
+        ]);
+    }
+
+    /**
+     * Book the saved draft courier, then transition to CONFIRMED.
+     * Courier failure leaves the order PENDING with no successful shipment.
+     */
+    private function confirmWithCourierBooking(User $actor, Order $order): Order
+    {
+        $order->loadMissing('shipment');
+
+        if ($order->shipment !== null || $order->hasBookedShipment()) {
+            return $this->orderStatusService->transition(
+                $order,
+                OrderStatus::CONFIRMED,
+                (int) $actor->id,
+                (int) $actor->company_id,
+                'Manual create confirmation after existing shipment.',
+                (int) $actor->company_id,
+            );
+        }
+
+        try {
+            $this->draftCourierBookingService->book(
+                $order,
+                (int) $order->draft_courier_id,
+                $order->draft_courier_service_id !== null ? (int) $order->draft_courier_service_id : null,
+                (int) $order->draft_courier_city_id,
+                (int) $actor->id,
+                (int) $actor->company_id,
+            );
+        } catch (Throwable $exception) {
+            try {
+                $this->draftCourierBookingService->recordFailure($order, $exception, (int) $actor->id);
+            } catch (Throwable $recordException) {
+                report($recordException);
+            }
+
+            throw $this->courierBookingFailureException($exception)
+                ->redirectTo(route('orders.show', $order));
+        }
+
+        return $this->orderStatusService->transition(
+            $order->fresh(['shipment']),
+            OrderStatus::CONFIRMED,
+            (int) $actor->id,
+            (int) $actor->company_id,
+            'Manual create confirmation after courier booking.',
+            (int) $actor->company_id,
+        );
+    }
+
+    /**
+     * @param  array{
+     *     draft_courier_id: ?int,
+     *     draft_courier_service_id: ?int,
+     *     draft_courier_city_id: ?int,
+     *     district_name: ?string,
+     *     city_name: ?string
+     * }  $draft
+     */
+    private function assertConfirmCourierDraftReady(array $draft): void
+    {
+        if ($draft['draft_courier_id'] === null) {
+            throw ValidationException::withMessages([
+                'courier_id' => ['A courier must be selected before confirming the order.'],
+            ]);
+        }
+
+        if ($draft['draft_courier_service_id'] === null) {
+            throw ValidationException::withMessages([
+                'courier_service_id' => ['A courier service must be selected before confirming the order.'],
+            ]);
+        }
+
+        if ($draft['draft_courier_city_id'] === null) {
+            throw ValidationException::withMessages([
+                'courier_city_id' => ['A courier state/city must be selected before confirming the order.'],
+            ]);
+        }
+    }
+
+    private function courierBookingFailureException(Throwable $exception): ValidationException
+    {
+        if ($exception instanceof ValidationException) {
+            return $exception;
+        }
+
+        return ValidationException::withMessages([
+            'booking' => [
+                'Courier booking failed. The order was saved as Pending and was not confirmed. '
+                .'No shipment was created. Contact support before retrying if the courier may have accepted the request.',
+            ],
         ]);
     }
 

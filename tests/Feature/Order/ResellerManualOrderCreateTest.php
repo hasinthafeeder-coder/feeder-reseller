@@ -11,6 +11,7 @@ use Feeder\Core\Enums\PortalCode;
 use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Enums\UserStatus;
 use Feeder\Core\Enums\UserType;
+use Feeder\Core\Contracts\Courier\CourierBookingAdapter;
 use Feeder\Core\Models\Company;
 use Feeder\Core\Models\Courier;
 use Feeder\Core\Models\CourierCity;
@@ -28,6 +29,7 @@ use Feeder\Core\Models\Role;
 use Feeder\Core\Models\Shipment;
 use Feeder\Core\Models\SupplierCourierAccount;
 use Feeder\Core\Models\User;
+use Feeder\Core\Services\Courier\CourierBookingAdapterResolver;
 use Feeder\Core\Services\Order\CustomerBanService;
 use Feeder\Core\Services\Order\CustomerIdentityService;
 use Illuminate\Support\Facades\Crypt;
@@ -705,7 +707,7 @@ class ResellerManualOrderCreateTest extends TestCase
         $this->assertSame('500.00', (string) $order->items_subtotal);
     }
 
-    public function test_confirm_order_creates_new_pending_not_confirmed(): void
+    public function test_confirm_order_without_courier_is_rejected(): void
     {
         $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
         $supplier = $this->makeSupplierUser();
@@ -718,14 +720,308 @@ class ResellerManualOrderCreateTest extends TestCase
             'items' => [
                 ['product_variant_id' => $variant->id, 'quantity' => 1],
             ],
+        ]))->assertSessionHasErrors('courier_id');
+
+        $this->assertSame(0, Order::query()->where('reseller_company_id', $reseller->company_id)->count());
+    }
+
+    public function test_confirm_order_books_courier_then_confirms(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier, ['weight' => 1.0, 'selling_price' => 250.00]);
+        $setup = $this->makeCourierSetup($supplier);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-MANUAL-CONFIRM-1'];
+            }
+        });
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'confirm',
+            'courier_id' => $setup['courier']->id,
+            'courier_service_id' => $setup['service']->id,
+            'courier_city_id' => $setup['city']->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertNotNull($order);
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertSame(OrderType::NEW, $order->order_type);
+        $this->assertNotNull($order->confirmed_at);
+        $this->assertSame(1, $probe->calls);
+        $this->assertNotNull($order->shipment);
+        $this->assertSame('WB-MANUAL-CONFIRM-1', $order->shipment->tracking_number);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+
+        $history = OrderStatusHistory::query()
+            ->where('order_id', $order->id)
+            ->where('to_status', OrderStatus::CONFIRMED)
+            ->first();
+        $this->assertNotNull($history);
+        $this->assertSame(OrderStatus::PENDING, $history->from_status);
+    }
+
+    public function test_confirm_order_courier_failure_stays_pending_without_shipment(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier, ['weight' => 1.0, 'selling_price' => 250.00]);
+        $setup = $this->makeCourierSetup($supplier);
+
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class implements CourierBookingAdapter
+        {
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'booking' => ['Courier rejected the manual create booking.'],
+                ]);
+            }
+        });
+
+        $response = $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'confirm',
+            'courier_id' => $setup['courier']->id,
+            'courier_service_id' => $setup['service']->id,
+            'courier_city_id' => $setup['city']->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]));
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertNotNull($order);
+        $response->assertRedirect(route('orders.show', $order));
+        $response->assertSessionHasErrors('booking');
+
+        $order = $order->fresh(['shipment']);
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+        $this->assertNull($order->confirmed_at);
+        $this->assertNull($order->shipment);
+        $this->assertSame(0, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertSame(
+            0,
+            OrderStatusHistory::query()
+                ->where('order_id', $order->id)
+                ->where('to_status', OrderStatus::CONFIRMED)
+                ->count()
+        );
+    }
+
+    public function test_confirm_order_duplicate_booking_protection(): void
+    {
+        $reseller = $this->makeResellerWithPermission([
+            'orders.create',
+            'orders.view',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier, ['weight' => 1.0, 'selling_price' => 250.00]);
+        $setup = $this->makeCourierSetup($supplier);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-DUP-GUARD-1'];
+            }
+        });
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'confirm',
+            'courier_id' => $setup['courier']->id,
+            'courier_service_id' => $setup['service']->id,
+            'courier_city_id' => $setup['city']->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+
+        $this->actingAs($reseller)
+            ->post(route('orders.shipment.book', $order))
+            ->assertSessionHasErrors();
+
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertSame('WB-DUP-GUARD-1', $order->fresh('shipment')->shipment?->tracking_number);
+    }
+
+    public function test_same_primary_and_secondary_phone_returns_validation_error(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $phone = '070'.random_int(1000000, 9999999);
+        $customersBefore = \Feeder\Core\Models\Customer::query()->count();
+        $phonesBefore = \Feeder\Core\Models\CustomerPhone::query()->count();
+
+        $this->actingAs($reseller)
+            ->postJson(route('orders.store'), $this->minimalPayload([
+                'supplier_id' => $supplier->id,
+                'primary_phone' => $phone,
+                'secondary_phone' => $phone,
+                'items' => [
+                    ['product_variant_id' => $variant->id, 'quantity' => 1],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['secondary_phone']);
+
+        $this->assertSame(0, Order::query()->where('primary_phone_snapshot', $phone)->count());
+        $this->assertSame(0, Order::query()->where('reseller_company_id', $reseller->company_id)->count());
+        $this->assertSame($customersBefore, \Feeder\Core\Models\Customer::query()->count());
+        $this->assertSame($phonesBefore, \Feeder\Core\Models\CustomerPhone::query()->count());
+    }
+
+    public function test_send_to_call_center_pool_creates_pending_with_pool_assignment(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'send_to_call_center',
+            'assignment_target' => 'pool',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
         ]))->assertRedirect();
 
         $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
         $this->assertSame(OrderStatus::PENDING, $order->status);
         $this->assertSame(OrderType::NEW, $order->order_type);
-        $this->assertNull($order->confirmed_at);
-        $this->assertNull($order->shipment);
-        $this->assertSame(0, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertTrue((bool) $order->available_in_pool);
+        $this->assertNull($order->cca_id);
+    }
+
+    public function test_send_to_call_center_assign_cca_creates_pending_with_cca(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+
+        $portal = Portal::query()->firstOrCreate(
+            ['code' => PortalCode::RESELLER->value],
+            ['name' => 'Reseller', 'is_active' => true]
+        );
+        $role = Role::query()->firstOrCreate(
+            ['portal_id' => $portal->id, 'slug' => 'call-center-agent'],
+            ['name' => 'Call Center Agent', 'is_system' => true, 'uuid' => (string) Str::uuid()]
+        );
+        $cca = User::query()->create([
+            'uuid' => (string) Str::uuid(),
+            'company_id' => $reseller->company_id,
+            'role_id' => $role->id,
+            'user_type' => UserType::EMPLOYEE->value,
+            'phone' => '071'.random_int(1000000, 9999999),
+            'email' => 'cca-'.Str::uuid().'@feeder.local',
+            'password' => Hash::make('password'),
+            'status' => UserStatus::ACTIVE->value,
+            'phone_verified_at' => now(),
+        ]);
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'send_to_call_center',
+            'assignment_target' => 'cca',
+            'assign_cca_id' => $cca->id,
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+        $this->assertSame(OrderType::NEW, $order->order_type);
+        $this->assertFalse((bool) $order->available_in_pool);
+        $this->assertSame((int) $cca->id, (int) $order->cca_id);
+    }
+
+    public function test_send_to_call_center_unassigned_creates_pending_without_cca(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'send_to_call_center',
+            'assignment_target' => 'unassigned',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+        $this->assertSame(OrderType::NEW, $order->order_type);
+        $this->assertFalse((bool) $order->available_in_pool);
+        $this->assertNull($order->cca_id);
     }
 
     public function test_send_to_call_center_creates_pending_and_preserves_assignment(): void
@@ -784,6 +1080,29 @@ class ResellerManualOrderCreateTest extends TestCase
         $variant = $this->makeVariant($supplier, ['weight' => 1.0, 'selling_price' => 250.00]);
         $setup = $this->makeCourierSetup($supplier);
 
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-CREATE-SHOULD-NOT'];
+            }
+        });
+
         $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
             'supplier_id' => $supplier->id,
             'courier_id' => $setup['courier']->id,
@@ -802,6 +1121,43 @@ class ResellerManualOrderCreateTest extends TestCase
         $this->assertSame('850.00', (string) $order->customer_payable_amount);
         $this->assertNull($order->shipment);
         $this->assertSame(0, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+
+        $marketId = $this->marketByCode('lk')->id;
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.couriers', [
+                'market_id' => $marketId,
+                'supplier_id' => $supplier->id,
+            ]))
+            ->assertOk();
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.courier-districts', [
+                'market_id' => $marketId,
+                'supplier_id' => $supplier->id,
+                'courier_id' => $setup['courier']->id,
+            ]))
+            ->assertOk();
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.courier-cities', [
+                'market_id' => $marketId,
+                'supplier_id' => $supplier->id,
+                'courier_id' => $setup['courier']->id,
+                'district' => 'Colombo',
+            ]))
+            ->assertOk();
+        $this->actingAs($reseller)
+            ->getJson(route('orders.catalog.courier-fee-preview', [
+                'market_id' => $marketId,
+                'supplier_id' => $supplier->id,
+                'courier_id' => $setup['courier']->id,
+                'total_weight' => 1,
+                'items_subtotal' => 250,
+                'discount_amount' => 0,
+            ]))
+            ->assertOk();
+
+        $this->assertSame(0, $probe->calls);
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
     }
 
     public function test_courier_remains_optional_during_creation(): void

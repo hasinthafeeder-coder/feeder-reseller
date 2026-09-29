@@ -19,7 +19,11 @@ class UpdateOrderStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', 'string', Rule::enum(OrderStatus::class)],
+            'status' => [
+                'required',
+                'string',
+                Rule::in(OrderStatus::callCenterActionableStatusValues()),
+            ],
             'reason' => ['nullable', 'string', 'max:1000'],
         ];
     }

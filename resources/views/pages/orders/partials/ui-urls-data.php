@@ -25,6 +25,10 @@ return [
     ],
     'orderUiWorkspace' => request('workspace'),
     'orderUiArchive' => request('archive', 'completed'),
-    'orderUiScreen' => request('ui_screen'),
+    // Prototype screens stay available in local/debug only so production Create Order
+    // cannot accidentally render mock UI via ?ui_screen=*.
+    'orderUiScreen' => (app()->environment('local') && (bool) config('app.debug'))
+        ? request('ui_screen')
+        : null,
     'orderUiIsArchitectureList' => in_array(request('workspace'), ['new', 'import', 'call-center', 'archived'], true),
 ];

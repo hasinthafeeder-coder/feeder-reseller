@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Order\AssignOrderCcaRequest;
 use App\Http\Requests\Order\BanCatalogCustomerRequest;
 use App\Http\Requests\Order\BanOrderCustomerRequest;
-use App\Http\Requests\Order\BookOrderShipmentRequest;
 use App\Http\Requests\Order\BulkAssignOrderCcaRequest;
 use App\Http\Requests\Order\BulkOrderIdsRequest;
 use App\Http\Requests\Order\IndexOrderRequest;
@@ -24,15 +23,20 @@ use App\Services\Order\ResellerOrderCatalogService;
 use App\Services\Order\ResellerOrderListService;
 use App\Services\Order\ResellerOrderWorkflowService;
 use App\Services\Order\ResellerShipmentWorkflowService;
+use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Exceptions\CourierProviderBookingException;
 use Feeder\Core\Exceptions\DuplicateOrderWarningException;
+use Feeder\Core\Models\Order;
+use Feeder\Core\Models\OrderComment;
 use Feeder\Core\Models\ProductVariant;
+use Feeder\Core\Services\Order\DraftOrderCourierBookingService;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 use Illuminate\View\View;
 
 class OrderController extends Controller
@@ -94,9 +98,6 @@ class OrderController extends Controller
             'isCca' => app(CallCenterAgentEligibilityService::class)
                 ->isEligible($actor, (int) $actor->company_id),
             'canBanCustomer' => $actor?->hasPermission('customers.bans.create') === true,
-            'canAssignCourier' => $actor?->hasPermission('orders.shipment.book') === true
-                && ! app(CallCenterAgentEligibilityService::class)
-                    ->isEligible($actor, (int) $actor->company_id),
             'shipmentBootstrap' => null,
             'duplicateOrders' => session('duplicate_orders', []),
             'oldItems' => $this->enrichOldItems(old('items', [])),
@@ -202,28 +203,46 @@ class OrderController extends Controller
                 ], 422);
             }
 
+            $redirectTo = $e->redirectTo ?: route('orders.create');
+
             return redirect()
-                ->route('orders.create')
+                ->to($redirectTo)
                 ->withInput($request->all())
                 ->withErrors($e->errors());
         }
 
         if ($request->wantsJson()) {
+            $confirmed = $order->status === \Feeder\Core\Enums\OrderStatus::CONFIRMED
+                || $order->confirmed_at !== null;
+
             return response()->json([
                 'success' => true,
-                'message' => 'Order '.$order->order_number.' created successfully.',
+                'message' => $confirmed
+                    ? 'Order '.$order->order_number.' confirmed and courier booked successfully.'
+                    : 'Order '.$order->order_number.' created successfully.',
                 'data' => [
                     'uuid' => (string) $order->uuid,
                     'order_number' => (string) $order->order_number,
+                    'status' => $order->status instanceof \BackedEnum
+                        ? $order->status->value
+                        : (string) $order->status,
                     'show_url' => route('orders.show', $order),
                     'book_url' => route('orders.shipment.book', $order),
                 ],
             ]);
         }
 
+        $confirmed = $order->status === \Feeder\Core\Enums\OrderStatus::CONFIRMED
+            || $order->confirmed_at !== null;
+
         return redirect()
             ->route('orders.show', $order)
-            ->with('success', 'Order '.$order->order_number.' created successfully.');
+            ->with(
+                'success',
+                $confirmed
+                    ? 'Order '.$order->order_number.' confirmed and courier booked successfully.'
+                    : 'Order '.$order->order_number.' created successfully.'
+            );
     }
 
     public function show(string $order): View
@@ -232,9 +251,6 @@ class OrderController extends Controller
         $found = $this->orderWorkflowService->findOrFailForCompany($actor, $order);
         $canBookShipment = $actor?->hasPermission('orders.shipment.book') === true
             && ! $this->orderWorkflowService->hasPendingPaymentApproval($found);
-        $eligibleCouriers = ($canBookShipment && $found->shipment === null)
-            ? $this->shipmentWorkflowService->couriers($actor, $found)
-            : [];
         $canEditOrder = $this->orderWorkflowService->canEditOrderDetails($actor, $found);
         $isPendingApproval = $this->orderWorkflowService->hasPendingPaymentApproval($found);
         $canSubmitBankTransfer = $this->orderWorkflowService->canSubmitBankTransfer($actor, $found);
@@ -246,6 +262,8 @@ class OrderController extends Controller
             && $found->customer_id !== null
             && ! (bool) $found->customer?->is_banned;
 
+        $found->loadMissing(['draftCourier', 'draftCourierCity', 'shipment']);
+
         return view('pages.orders.show', [
             'order' => $found,
             'statusOptions' => $this->orderWorkflowService->statusOptions(),
@@ -254,7 +272,7 @@ class OrderController extends Controller
             'eligibleCcas' => $this->orderWorkflowService->eligibleCcas($actor, $found),
             'canReactivate' => $this->orderWorkflowService->canReactivate($found),
             'canBookShipment' => $canBookShipment,
-            'eligibleCouriers' => $eligibleCouriers,
+            'courierBookingError' => $this->latestCourierBookingError($found),
             'canEditOrder' => $canEditOrder,
             'canBanCustomer' => $canBanCustomer,
             'isPendingApproval' => $isPendingApproval,
@@ -288,7 +306,6 @@ class OrderController extends Controller
                 'update' => route('orders.update', $found),
                 'bookShipment' => route('orders.shipment.book', $found),
             ],
-            'canAssignCourier' => $canBookShipment && ! $isCca,
             'shipmentBootstrap' => $found->shipment !== null
                 ? $this->shipmentWorkflowService->serializeBooking($found->shipment)
                 : null,
@@ -833,21 +850,15 @@ class OrderController extends Controller
         return response()->json(['data' => $preview]);
     }
 
-    public function bookShipment(BookOrderShipmentRequest $request, string $order): RedirectResponse|JsonResponse
+    public function bookShipment(Request $request, string $order): RedirectResponse|JsonResponse
     {
         $actor = Auth::user();
         $found = $this->shipmentWorkflowService->findOrFailForCompany($actor, $order);
-        $serviceId = $request->validated('courier_service_id');
 
         try {
-            $shipment = $this->shipmentWorkflowService->book(
-                $actor,
-                $found,
-                (int) $request->validated('courier_id'),
-                $serviceId !== null ? (int) $serviceId : null,
-                (int) $request->validated('courier_city_id'),
-            );
+            $shipment = $this->shipmentWorkflowService->retryConfirmedBooking($actor, $found);
         } catch (CourierProviderBookingException $e) {
+            $this->recordConfirmedBookingFailure($found, $e, (int) $actor->id);
             if ($request->wantsJson()) {
                 $courierName = $e->courier['name'] ?? 'Courier';
 
@@ -865,10 +876,12 @@ class OrderController extends Controller
                 ->withInput()
                 ->withErrors($e->errors());
         } catch (ValidationException $e) {
+            $this->recordConfirmedBookingFailure($found, $e, (int) $actor->id);
+
             if ($request->wantsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Courier assignment failed.',
+                    'message' => 'Courier booking failed.',
                     'errors' => $e->errors(),
                 ], 422);
             }
@@ -884,7 +897,7 @@ class OrderController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'success' => true,
-                'message' => 'Courier assigned successfully.',
+                'message' => 'Courier booked successfully.',
                 'data' => $payload,
             ]);
         }
@@ -1125,5 +1138,37 @@ class OrderController extends Controller
         }
 
         return response()->json(['data' => $preview]);
+    }
+
+    private function latestCourierBookingError(Order $order): ?string
+    {
+        $status = $order->status instanceof OrderStatus
+            ? $order->status
+            : OrderStatus::tryFrom((string) $order->status);
+
+        if ($status !== OrderStatus::CONFIRMED || $order->shipment !== null) {
+            return null;
+        }
+
+        $body = OrderComment::query()
+            ->where('order_id', $order->id)
+            ->where('context_ref', DraftOrderCourierBookingService::FAILURE_CONTEXT_REF)
+            ->orderByDesc('id')
+            ->value('body');
+
+        return is_string($body) && $body !== '' ? $body : null;
+    }
+
+    private function recordConfirmedBookingFailure(Order $order, Throwable $exception, int $actorId): void
+    {
+        $status = $order->status instanceof OrderStatus
+            ? $order->status
+            : OrderStatus::tryFrom((string) $order->status);
+
+        if ($status !== OrderStatus::CONFIRMED) {
+            return;
+        }
+
+        $this->shipmentWorkflowService->recordBookingFailure($order, $exception, $actorId);
     }
 }

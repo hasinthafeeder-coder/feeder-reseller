@@ -321,7 +321,7 @@ class ResellerOrderImportService
                 'courier_fee_amount' => (float) ($row->courier_fee_amount ?? 0),
                 'duplicate_warning_overridden' => true,
                 'after_hours_warning_shown' => true,
-                'intent' => ResellerManualOrderService::INTENT_CONFIRM,
+                'intent' => ResellerManualOrderService::INTENT_SEND_TO_CALL_CENTER,
                 'assignment_target' => ResellerManualOrderService::ASSIGNMENT_UNASSIGNED,
             ]);
         } catch (DuplicateOrderWarningException $e) {

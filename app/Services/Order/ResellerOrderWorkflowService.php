@@ -12,6 +12,7 @@ use Feeder\Core\Models\OrderPaymentSubmission;
 use Feeder\Core\Models\User;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Feeder\Core\Services\Order\CustomerBanService;
+use Feeder\Core\Services\Order\DraftOrderCourierBookingService;
 use Feeder\Core\Services\Order\OrderCcaAssignmentService;
 use Feeder\Core\Services\Order\OrderCommentService;
 use Feeder\Core\Services\Order\OrderDiscountService;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * Reseller Portal adapter for single-order operational workflow.
@@ -40,6 +42,7 @@ class ResellerOrderWorkflowService
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly CustomerBanService $customerBanService,
         private readonly OrderPaymentReviewService $paymentReviewService,
+        private readonly DraftOrderCourierBookingService $draftCourierBookingService,
     ) {}
 
     public function findForCompany(User $actor, string $orderUuid): ?Order
@@ -68,12 +71,12 @@ class ResellerOrderWorkflowService
                 'value' => $status->value,
                 'label' => $status->label(),
             ],
-            OrderStatus::cases()
+            OrderStatus::callCenterActionableStatuses()
         );
     }
 
     /**
-     * Target statuses for reactivation (everything except CANCELLED).
+     * Target statuses for reactivation (Call Center actionable statuses except CANCELLED).
      *
      * @return list<array{value: string, label: string}>
      */
@@ -147,6 +150,15 @@ class ResellerOrderWorkflowService
     ): Order {
         $this->assertCcaMayOperateOnOrder($actor, $order);
 
+        $toStatus = $status instanceof OrderStatus ? $status : OrderStatus::from($status);
+        $fromStatus = $order->status instanceof OrderStatus
+            ? $order->status
+            : OrderStatus::tryFrom((string) $order->status);
+
+        if ($toStatus === OrderStatus::CONFIRMED && $fromStatus !== OrderStatus::CONFIRMED) {
+            $order = $this->bookCourierBeforeConfirmation($actor, $order);
+        }
+
         return $this->statusService->transition(
             $order,
             $status,
@@ -155,6 +167,51 @@ class ResellerOrderWorkflowService
             $reason,
             (int) $actor->company_id,
         );
+    }
+
+    /**
+     * Confirm requires a successful waybill first.
+     * Booking failure leaves the previous Call Center status unchanged.
+     */
+    private function bookCourierBeforeConfirmation(User $actor, Order $order): Order
+    {
+        $order->loadMissing('shipment');
+
+        if ($order->shipment !== null || $order->hasBookedShipment()) {
+            return $order;
+        }
+
+        $this->paymentReviewService->assertCourierReadyForBooking($order);
+
+        try {
+            $this->draftCourierBookingService->book(
+                $order,
+                (int) $order->draft_courier_id,
+                $order->draft_courier_service_id !== null ? (int) $order->draft_courier_service_id : null,
+                (int) $order->draft_courier_city_id,
+                (int) $actor->id,
+                (int) $actor->company_id,
+            );
+        } catch (Throwable $exception) {
+            try {
+                $this->draftCourierBookingService->recordFailure($order, $exception, (int) $actor->id);
+            } catch (Throwable $recordException) {
+                report($recordException);
+            }
+
+            if ($exception instanceof ValidationException) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'booking' => [
+                    'Courier booking failed. The order was not confirmed and no shipment was created. '
+                    .'Contact support before retrying if the courier may have accepted the request.',
+                ],
+            ]);
+        }
+
+        return $order->fresh(['shipment']);
     }
 
     public function assignCca(User $actor, Order $order, int $ccaId, ?string $note = null): Order

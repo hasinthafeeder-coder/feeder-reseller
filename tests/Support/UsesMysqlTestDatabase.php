@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
 use Illuminate\Support\Facades\DB;
 
 trait UsesMysqlTestDatabase
@@ -19,7 +20,12 @@ trait UsesMysqlTestDatabase
         ]);
         DB::purge('mysql');
         DB::reconnect('mysql');
-        DB::beginTransaction();
+
+        // Match Laravel's DatabaseTransactions trait: afterCommit callbacks run when
+        // application code commits back to this wrapping test transaction.
+        $connection = DB::connection('mysql');
+        $connection->setTransactionManager(new DatabaseTransactionsManager(['mysql']));
+        $connection->beginTransaction();
     }
 
     protected function tearDownMysqlTestDatabase(): void

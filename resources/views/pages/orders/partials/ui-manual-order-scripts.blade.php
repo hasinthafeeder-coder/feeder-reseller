@@ -18,8 +18,6 @@
         csrf: @json(csrf_token()),
         lockMarket: @json(($orderFormMode ?? 'create') === 'edit'),
         lockDiscount: @json((bool) ($isCca ?? false) && ($orderFormMode ?? 'create') === 'edit'),
-        canAssignCourier: @json((bool) ($canAssignCourier ?? false)),
-        shipment: @json($shipmentBootstrap ?? null),
     };
 
     const oldDistrictName = @json(old('district_name', $formDefaults['district_name'] ?? ''));
@@ -70,17 +68,6 @@
     const modalAssignCcaSelect = document.getElementById('modalAssignCcaSelect');
     const closeCallCenterAssignModal = document.getElementById('closeCallCenterAssignModal');
     const confirmSendToCallCenterBtn = document.getElementById('confirmSendToCallCenterBtn');
-    const assignCourierBtn = document.getElementById('assignCourierBtn');
-    const assignCourierError = document.getElementById('assignCourierError');
-    const assignCourierDebug = document.getElementById('assignCourierDebug');
-    const assignCourierDebugTitle = document.getElementById('assignCourierDebugTitle');
-    const assignCourierDebugMeta = document.getElementById('assignCourierDebugMeta');
-    const assignCourierDebugResponse = document.getElementById('assignCourierDebugResponse');
-    const assignCourierDebugRequest = document.getElementById('assignCourierDebugRequest');
-    const assignCourierHint = document.getElementById('assignCourierHint');
-    const assignedCourierPanel = document.getElementById('assignedCourierPanel');
-    const assignedCourierName = document.getElementById('assignedCourierName');
-    const assignedCourierWaybill = document.getElementById('assignedCourierWaybill');
 
     let lineIndex = 0;
     let currencyCode = 'LKR';
@@ -210,13 +197,7 @@
         ], 'No delivery details yet');
 
         const courier = selectedCourier();
-        const booked = pageBootstrap.shipment && pageBootstrap.shipment.waybill
-            ? [
-                pageBootstrap.shipment.courier?.name || '',
-                pageBootstrap.shipment.waybill,
-            ].filter(Boolean).join('\n')
-            : null;
-        setReviewBlock(reviewCourierBlock, booked ? [booked] : [
+        setReviewBlock(reviewCourierBlock, [
             courier ? courier.name : '',
             district,
             city,
@@ -865,7 +846,6 @@
         }
 
         syncLocationHiddenFields();
-        syncAssignCourierButton();
     }
 
     async function refreshCourierFeePreview() {
@@ -1457,6 +1437,22 @@
             return false;
         }
 
+        if (intent === 'confirm') {
+            const courierId = courierSelect ? String(courierSelect.value || '') : '';
+            const district = courierDistrict ? String(courierDistrict.value || '') : '';
+            const cityId = courierCity ? String(courierCity.value || '') : '';
+
+            if (!courierId) {
+                window.alert('Please select a courier before confirming the order.');
+                return false;
+            }
+
+            if (!district || !cityId) {
+                window.alert('Please select courier state/district and city before confirming the order.');
+                return false;
+            }
+        }
+
         if (duplicatePanelVisible() && confirmDuplicateOverride.checked) {
             duplicateWarningOverriddenInput.value = '1';
         }
@@ -1469,331 +1465,64 @@
         form.submit();
     }
 
-    function firstValidationError(errors) {
-        if (!errors || typeof errors !== 'object') {
-            return null;
-        }
-        const keys = Object.keys(errors);
-        if (!keys.length) {
-            return null;
-        }
-        const first = errors[keys[0]];
-        if (Array.isArray(first) && first.length) {
-            return String(first[0]);
-        }
-        return String(first || '');
-    }
-
-    function showAssignCourierError(message) {
-        if (!assignCourierError) return;
-        if (!message) {
-            assignCourierError.classList.add('hidden');
-            assignCourierError.textContent = '';
-            return;
-        }
-        assignCourierError.textContent = message;
-        assignCourierError.classList.remove('hidden');
-    }
-
-    function formatAssignCourierDebug(value) {
-        if (value == null || value === '') {
-            return '(empty)';
-        }
-        if (typeof value === 'string') {
-            return value;
-        }
-        try {
-            return JSON.stringify(value, null, 2);
-        } catch (e) {
-            return String(value);
-        }
-    }
-
-    function showAssignCourierDebug(payload) {
-        if (!assignCourierDebug) return;
-        const debug = payload && payload.debug ? payload.debug : null;
-        if (!debug) {
-            assignCourierDebug.classList.add('hidden');
-            if (assignCourierDebugTitle) assignCourierDebugTitle.textContent = '';
-            if (assignCourierDebugMeta) assignCourierDebugMeta.textContent = '';
-            if (assignCourierDebugResponse) assignCourierDebugResponse.textContent = '';
-            if (assignCourierDebugRequest) assignCourierDebugRequest.textContent = '';
+    function populateCallCenterCcaSelect() {
+        if (!modalAssignCcaSelect) {
             return;
         }
 
-        const courierName = (payload.courier && payload.courier.name) || 'Courier';
-        const status = debug.http_status;
-        const failureLabels = {
-            http_error: 'HTTP error',
-            connection: 'Connection failure',
-            invalid_json: 'Invalid JSON response',
-            application_rejection: 'Provider rejected the booking',
-            authentication: 'Authentication failure',
-        };
-        const meta = [];
-        if (status !== null && status !== undefined && status !== '') {
-            meta.push('HTTP Status: ' + status);
-        }
-        if (debug.failure_type && failureLabels[debug.failure_type]) {
-            meta.push(failureLabels[debug.failure_type]);
-        }
-        if (debug.exception && debug.exception.message) {
-            meta.push(debug.exception.message);
-        }
-        if (debug.exception && debug.exception.class) {
-            meta.push(debug.exception.class);
-        }
+        const previousValue = modalAssignCcaSelect.value;
+        modalAssignCcaSelect.innerHTML = '';
 
-        if (assignCourierDebugTitle) {
-            assignCourierDebugTitle.textContent = courierName + ' Booking Failed';
-        }
-        if (assignCourierDebugMeta) {
-            assignCourierDebugMeta.textContent = meta.join(' · ');
-        }
-        if (assignCourierDebugResponse) {
-            assignCourierDebugResponse.textContent = formatAssignCourierDebug(debug.response);
-        }
-        if (assignCourierDebugRequest) {
-            assignCourierDebugRequest.textContent = formatAssignCourierDebug(debug.request);
-        }
-        assignCourierDebug.classList.remove('hidden');
-    }
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select CCA';
+        modalAssignCcaSelect.appendChild(placeholder);
 
-    function applyShipmentBootstrap(shipment) {
-        pageBootstrap.shipment = shipment || null;
-
-        if (assignedCourierPanel && assignedCourierName && assignedCourierWaybill) {
-            if (shipment && shipment.waybill) {
-                assignedCourierName.textContent = shipment.courier?.name || 'Courier assigned';
-                assignedCourierWaybill.textContent = 'Waybill: ' + shipment.waybill;
-                assignedCourierPanel.classList.remove('hidden');
-            } else {
-                assignedCourierName.textContent = '';
-                assignedCourierWaybill.textContent = '';
-                assignedCourierPanel.classList.add('hidden');
-            }
-        }
-
-        const booked = !!(shipment && shipment.waybill);
-        if (booked) {
-            courierSelect.disabled = true;
-            courierDistrict.disabled = true;
-            courierCity.disabled = true;
-            if (assignCourierHint) {
-                assignCourierHint.textContent = 'Courier already assigned. Waybill is locked after successful booking.';
-            }
-        }
-
-        syncAssignCourierButton();
-        updateOrderReview();
-    }
-
-    function syncAssignCourierButton() {
-        if (!assignCourierBtn || !pageBootstrap.canAssignCourier) {
-            return;
-        }
-
-        const booked = !!(pageBootstrap.shipment && pageBootstrap.shipment.waybill);
-        const ready = !!(
-            selectedCourier()
-            && courierDistrict.value
-            && courierCity.value
-            && selectedCourierCityId()
-            && supplierIdInput.value
-            && selectedMarketId
-        );
-
-        assignCourierBtn.disabled = booked || !ready || assignCourierBtn.dataset.busy === '1';
-        if (booked) {
-            assignCourierBtn.textContent = 'Courier Assigned';
-        } else if (assignCourierBtn.dataset.busy === '1') {
-            assignCourierBtn.textContent = 'Assigning…';
-        } else {
-            assignCourierBtn.textContent = 'Assign Courier';
-        }
-    }
-
-    async function postJson(url, body) {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': pageBootstrap.csrf,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify(body),
+        (pageBootstrap.eligibleCcas || []).forEach((cca) => {
+            const option = document.createElement('option');
+            option.value = String(cca.id);
+            option.textContent = cca.name || ('CCA #' + cca.id);
+            modalAssignCcaSelect.appendChild(option);
         });
 
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            const error = new Error(payload.message || 'Request failed.');
-            error.errors = payload.errors || null;
-            error.payload = payload;
-            throw error;
-        }
-
-        return payload;
-    }
-
-    function orderFormPayload(intent) {
-        const items = [];
-        linesContainer.querySelectorAll('.order-line-row').forEach((row) => {
-            const variantId = row.querySelector('.line-variant')?.value;
-            const quantity = row.querySelector('.line-qty')?.value;
-            const selectedPrice = row.querySelector('.line-selected-price')?.value;
-            if (!variantId) return;
-            const item = {
-                product_variant_id: Number(variantId),
-                quantity: Number(quantity || 1),
-            };
-            if (selectedPrice !== '' && selectedPrice != null) {
-                item.selected_selling_price = Number(selectedPrice);
-            }
-            items.push(item);
-        });
-
-        return {
-            intent: intent || 'confirm',
-            market_id: Number(selectedMarketId),
-            supplier_id: Number(supplierIdInput.value),
-            customer_name: customerName.value,
-            primary_phone: primaryPhone.value,
-            secondary_phone: secondaryPhone.value || null,
-            address_line1: addressLine1.value,
-            address_line2: '',
-            city_name: selectedCityName() || null,
-            district_name: selectedDistrictName() || null,
-            full_address_text: (fullAddressText && fullAddressText.value) || addressLine1.value,
-            discount_amount: Number(discountInput.value || 0),
-            courier_id: courierSelect.value ? Number(courierSelect.value) : null,
-            courier_city_id: selectedCourierCityId(),
-            duplicate_warning_overridden: duplicateWarningOverriddenInput.value === '1',
-            after_hours_warning_shown: afterHoursWarningShownInput.value === '1',
-            assignment_target: assignmentTargetInput.value || 'unassigned',
-            assign_cca_id: assignCcaIdInput.value ? Number(assignCcaIdInput.value) : null,
-            items,
-        };
-    }
-
-    async function persistOrderBeforeBooking() {
-        if (isEditMode) {
-            if (!prepareEditSubmit()) {
-                throw new Error('Please fix order details before assigning a courier.');
-            }
-            const updateUrl = pageBootstrap.routes.update;
-            if (!updateUrl) {
-                throw new Error('Order update route is not available.');
-            }
-            return postJson(updateUrl, orderFormPayload(''));
-        }
-
-        if (!prepareSubmit('confirm', 'unassigned', '')) {
-            throw new Error('Please complete required order details before assigning a courier.');
-        }
-
-        const storeUrl = pageBootstrap.routes.store;
-        if (!storeUrl) {
-            throw new Error('Order create route is not available.');
-        }
-
-        return postJson(storeUrl, orderFormPayload('confirm'));
-    }
-
-    async function assignCourier() {
-        if (!pageBootstrap.canAssignCourier || !assignCourierBtn) {
-            return;
-        }
-
-        showAssignCourierError('');
-        showAssignCourierDebug(null);
-
-        if (pageBootstrap.shipment && pageBootstrap.shipment.waybill) {
-            showAssignCourierError('Courier already assigned for this order.');
-            syncAssignCourierButton();
-            return;
-        }
-
-        const courier = selectedCourier();
-        const cityId = selectedCourierCityId();
-
-        if (!courier || !courierDistrict.value || !courierCity.value || !cityId) {
-            showAssignCourierError('Select courier, state/district, and city before assigning.');
-            syncAssignCourierButton();
-            return;
-        }
-
-        assignCourierBtn.dataset.busy = '1';
-        syncAssignCourierButton();
-
-        try {
-            const saved = await persistOrderBeforeBooking();
-            const bookUrl = saved?.data?.book_url || pageBootstrap.routes.bookShipment;
-            if (!bookUrl) {
-                throw new Error('Shipment booking route is not available.');
-            }
-
-            const booked = await postJson(bookUrl, {
-                courier_id: Number(courier.id),
-                courier_city_id: Number(cityId),
-            });
-
-            const shipment = booked?.data || null;
-            applyShipmentBootstrap(shipment);
-
-            pushTimelineEvent({
-                key: 'courier-assigned',
-                type: 'courier',
-                title: 'Courier assigned',
-                description: (shipment?.courier?.name || courier.name)
-                    + (shipment?.waybill ? (' · ' + shipment.waybill) : ''),
-            });
-
-            if (!isEditMode && saved?.data?.show_url) {
-                window.location.href = saved.data.show_url;
-                return;
-            }
-        } catch (err) {
-            const message = firstValidationError(err.errors)
-                || (err.payload && err.payload.message)
-                || err.message
-                || 'Courier assignment failed.';
-            showAssignCourierError(message);
-            showAssignCourierDebug(err.payload || null);
-
-            if (err.payload && Array.isArray(err.payload.duplicate_orders) && err.payload.duplicate_orders.length) {
-                showDuplicatePanel(err.payload.duplicate_orders);
-            }
-        } finally {
-            if (assignCourierBtn) {
-                assignCourierBtn.dataset.busy = '0';
-            }
-            syncAssignCourierButton();
+        if (previousValue && modalAssignCcaSelect.querySelector('option[value="' + previousValue + '"]')) {
+            modalAssignCcaSelect.value = previousValue;
         }
     }
 
     function openCallCenterAssignModal() {
-        modalAssignCcaSelect.innerHTML = '';
-        pageBootstrap.eligibleCcas.forEach((cca) => {
-            const option = document.createElement('option');
-            option.value = String(cca.id);
-            option.textContent = cca.name;
-            modalAssignCcaSelect.appendChild(option);
-        });
+        if (!callCenterAssignModal) {
+            return;
+        }
 
-        document.getElementById('assignTargetUnassigned').checked = true;
-        modalAssignCcaSelect.disabled = true;
+        populateCallCenterCcaSelect();
+
+        const unassignedRadio = document.getElementById('assignTargetUnassigned');
+        if (unassignedRadio) {
+            unassignedRadio.checked = true;
+        }
+
+        if (modalAssignCcaSelect) {
+            modalAssignCcaSelect.disabled = true;
+            modalAssignCcaSelect.value = '';
+        }
+
         callCenterAssignModal.classList.remove('hidden');
     }
 
     function closeCallCenterModal() {
+        if (!callCenterAssignModal) {
+            return;
+        }
+
         callCenterAssignModal.classList.add('hidden');
     }
 
     document.querySelectorAll('input[name="modalAssignmentTarget"]').forEach((input) => {
         input.addEventListener('change', () => {
-            modalAssignCcaSelect.disabled = input.value !== 'cca';
+            if (modalAssignCcaSelect) {
+                modalAssignCcaSelect.disabled = input.value !== 'cca';
+            }
         });
     });
 
@@ -1817,15 +1546,11 @@
             recalc();
         }
 
-        syncAssignCourierButton();
-
         pushTimelineEvent({
             key: 'courier',
             type: 'courier',
             title: courier ? 'Courier draft selected' : 'Courier draft cleared',
-            description: courier
-                ? (courier.name + (pageBootstrap.shipment?.waybill ? '' : ' — select district/city to assign'))
-                : 'No courier selected',
+            description: courier ? courier.name : 'No courier selected',
         });
     });
 
@@ -1833,7 +1558,6 @@
         await loadCities(courierDistrict.value);
         syncLocationHiddenFields();
         updateOrderReview();
-        syncAssignCourierButton();
         if (courierDistrict.value) {
             pushTimelineEvent({
                 key: 'district',
@@ -1847,7 +1571,6 @@
     courierCity.addEventListener('change', () => {
         syncLocationHiddenFields();
         updateOrderReview();
-        syncAssignCourierButton();
         if (courierCity.value) {
             pushTimelineEvent({
                 key: 'city',
@@ -1857,12 +1580,6 @@
             });
         }
     });
-
-    if (assignCourierBtn) {
-        assignCourierBtn.addEventListener('click', () => {
-            assignCourier();
-        });
-    }
 
     addLineBtn.addEventListener('click', () => addLine());
     discountInput.addEventListener('input', () => {
@@ -2077,8 +1794,6 @@
             preferredCityId: oldCourierCityId,
             preferredCity: oldCityName,
         });
-
-        applyShipmentBootstrap(pageBootstrap.shipment);
 
         if (pageBootstrap.duplicateOrders.length) {
             showDuplicatePanel(pageBootstrap.duplicateOrders);

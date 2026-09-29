@@ -5,10 +5,9 @@ namespace App\Services\Order;
 use Feeder\Core\Models\Order;
 use Feeder\Core\Models\Shipment;
 use Feeder\Core\Models\User;
-use Feeder\Core\Services\Courier\CourierBookingAdapterResolver;
+use Feeder\Core\Services\Order\DraftOrderCourierBookingService;
 use Feeder\Core\Services\Order\OrderCourierLookupService;
-use Feeder\Core\Services\Order\ShipmentBookingService;
-use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * Reseller Portal adapter for courier lookup and shipment booking.
@@ -21,8 +20,7 @@ class ResellerShipmentWorkflowService
     public function __construct(
         private readonly ResellerOrderWorkflowService $orderWorkflowService,
         private readonly OrderCourierLookupService $courierLookupService,
-        private readonly ShipmentBookingService $shipmentBookingService,
-        private readonly CourierBookingAdapterResolver $adapterResolver,
+        private readonly DraftOrderCourierBookingService $draftOrderCourierBookingService,
     ) {}
 
     public function findOrFailForCompany(User $actor, string $orderUuid): Order
@@ -109,33 +107,32 @@ class ResellerShipmentWorkflowService
         ?int $courierServiceId,
         int $courierCityId,
     ): Shipment {
-        $courier = $this->courierLookupService->requireEligibleCourier($order, $courierId);
-
-        if ($courierServiceId === null || $courierServiceId < 1) {
-            $service = $this->courierLookupService->firstActiveServiceForCourier($courierId);
-
-            if ($service === null) {
-                throw ValidationException::withMessages([
-                    'courier_service_id' => [
-                        'No active courier service is available for the selected courier.',
-                    ],
-                ]);
-            }
-
-            $courierServiceId = (int) $service->id;
-        }
-
-        $adapter = $this->adapterResolver->resolve($courier);
-
-        return $this->shipmentBookingService->book(
+        return $this->draftOrderCourierBookingService->book(
             $order,
             $courierId,
             $courierServiceId,
             $courierCityId,
-            $adapter,
             (int) $actor->id,
             (int) $actor->company_id,
         );
+    }
+
+    /**
+     * Retry booking for a confirmed order that has no shipment.
+     * Uses the saved draft courier selection, not request-supplied ids.
+     */
+    public function retryConfirmedBooking(User $actor, Order $order): Shipment
+    {
+        return $this->draftOrderCourierBookingService->bookSavedDraft(
+            $order,
+            (int) $actor->id,
+            (int) $actor->company_id,
+        );
+    }
+
+    public function recordBookingFailure(Order $order, Throwable $exception, ?int $actorId = null): void
+    {
+        $this->draftOrderCourierBookingService->recordFailure($order, $exception, $actorId);
     }
 
     /**

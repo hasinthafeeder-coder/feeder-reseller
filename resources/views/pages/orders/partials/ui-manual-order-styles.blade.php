@@ -77,9 +77,6 @@
         .order-create-prototype #customerExtraPanel.hidden,
         .order-create-prototype #afterHoursPanel.hidden,
         .order-create-prototype #duplicatePanel.hidden,
-        .order-create-prototype #assignedCourierPanel.hidden,
-        .order-create-prototype #assignCourierError.hidden,
-        .order-create-prototype #assignCourierDebug.hidden,
         .order-create-prototype .product-search-results.hidden,
         .order-create-prototype .orders-proto-modal.hidden {
             display: none;
@@ -106,18 +103,6 @@
             display: block;
             font-weight: 500;
             color: #a71d2a;
-        }
-
-        .order-create-prototype .assign-courier-debug-pre {
-            max-height: 240px;
-            overflow: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-            background: rgba(255, 255, 255, 0.75);
-            padding: 0.5rem 0.65rem;
-            border-radius: 6px;
-            font-size: 12px;
-            margin: 0.35rem 0 0;
         }
 
         .order-create-prototype .market-checks {

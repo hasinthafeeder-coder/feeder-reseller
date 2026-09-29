@@ -55,9 +55,9 @@ class ResellerOrderListService
      *
      * @return array{all: int, assigned: int, unassigned: int, pool: int, my: int}
      */
-    public function assignmentCounts(User $actor): array
+    public function assignmentCounts(User $actor, bool $callCenterOnly = false): array
     {
-        $base = $this->baseQuery($actor);
+        $base = $this->baseQuery($actor, $callCenterOnly);
 
         return [
             'all' => (clone $base)->count(),
@@ -80,6 +80,7 @@ class ResellerOrderListService
      */
     public function statusCounts(User $actor, Request $request): array
     {
+        $callCenterOnly = $this->isCallCenterWorkspace($request);
         $rows = $this->filteredQuery($actor, $request, ignoreStatus: true)
             ->toBase()
             ->selectRaw('status, COUNT(*) as aggregate')
@@ -87,8 +88,11 @@ class ResellerOrderListService
             ->pluck('aggregate', 'status');
 
         $counts = ['all' => 0];
+        $statuses = $callCenterOnly
+            ? OrderStatus::callCenterStatuses()
+            : OrderStatus::cases();
 
-        foreach (OrderStatus::cases() as $status) {
+        foreach ($statuses as $status) {
             $count = (int) ($rows[$status->value] ?? 0);
             $counts[$status->value] = $count;
             $counts['all'] += $count;
@@ -169,7 +173,7 @@ class ResellerOrderListService
 
         $orders = $this->paginate($actor, $request);
         $filters = $this->activeFilters($request);
-        $counts = $this->assignmentCounts($actor);
+        $counts = $this->assignmentCounts($actor, $isCallCenterWorkspace);
         $statusCounts = $this->statusCounts($actor, $request);
         $blocking = $isCca
             ? $this->ccaAssignmentService->blockingActivePoolClaim($actor, (int) $actor->company_id)
@@ -209,7 +213,7 @@ class ResellerOrderListService
                 ->all(),
             'ccas' => $this->ccaFilterOptions($actor)->all(),
             'suppliers' => $this->supplierFilterOptions($actor)->all(),
-            'statuses' => $this->statusFilterOptions(),
+            'statuses' => $this->statusFilterOptions($isCallCenterWorkspace),
             'sources' => $this->sourceFilterOptions(),
             'pool_lock' => $blocking === null ? null : [
                 'order_id' => (int) $blocking->order_id,
@@ -439,14 +443,18 @@ class ResellerOrderListService
     /**
      * @return list<array{value: string, label: string}>
      */
-    public function statusFilterOptions(): array
+    public function statusFilterOptions(bool $callCenterOnly = false): array
     {
+        $statuses = $callCenterOnly
+            ? OrderStatus::callCenterStatuses()
+            : OrderStatus::cases();
+
         $options = array_map(
             static fn (OrderStatus $status) => [
                 'value' => $status->value,
                 'label' => $status->label(),
             ],
-            OrderStatus::cases()
+            $statuses
         );
 
         $options[] = [
@@ -503,15 +511,26 @@ class ResellerOrderListService
             ->first();
     }
 
-    private function baseQuery(User $actor): Builder
+    private function isCallCenterWorkspace(Request $request): bool
     {
-        return Order::query()
+        return trim((string) $request->input('workspace', '')) === 'call-center';
+    }
+
+    private function baseQuery(User $actor, bool $callCenterOnly = false): Builder
+    {
+        $query = Order::query()
             ->where('reseller_company_id', (int) $actor->company_id);
+
+        if ($callCenterOnly) {
+            $query->whereIn('status', OrderStatus::callCenterStatusValues());
+        }
+
+        return $query;
     }
 
     private function filteredQuery(User $actor, Request $request, bool $ignoreStatus = false): Builder
     {
-        $query = $this->baseQuery($actor);
+        $query = $this->baseQuery($actor, $this->isCallCenterWorkspace($request));
         $filters = $this->activeFilters($request);
 
         $this->applyTabFilter($query, $actor, $filters['tab']);

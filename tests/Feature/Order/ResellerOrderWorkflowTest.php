@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Order;
 
+use Feeder\Core\Contracts\Courier\CourierBookingAdapter;
 use Feeder\Core\Enums\CompanyStatus;
 use Feeder\Core\Enums\OrderCommentContextType;
 use Feeder\Core\Enums\OrderSource;
@@ -11,6 +12,10 @@ use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Enums\UserStatus;
 use Feeder\Core\Enums\UserType;
 use Feeder\Core\Models\Company;
+use Feeder\Core\Models\Courier;
+use Feeder\Core\Models\CourierCity;
+use Feeder\Core\Models\CourierMarketPricing;
+use Feeder\Core\Models\CourierService;
 use Feeder\Core\Models\Customer;
 use Feeder\Core\Models\Order;
 use Feeder\Core\Models\OrderCcaAssignment;
@@ -23,12 +28,15 @@ use Feeder\Core\Models\Product;
 use Feeder\Core\Models\ProductCategory;
 use Feeder\Core\Models\ProductVariant;
 use Feeder\Core\Models\ResellerSupplierAssignment;
+use Feeder\Core\Models\SupplierCourierAccount;
 use Feeder\Core\Models\Role;
 use Feeder\Core\Models\User;
 use Feeder\Core\Models\UserProfile;
+use Feeder\Core\Services\Courier\CourierBookingAdapterResolver;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Feeder\Core\Services\Order\OrderStatusService;
 use Feeder\Core\Services\UuidService;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\Support\SetsUpMarketData;
@@ -115,12 +123,12 @@ class ResellerOrderWorkflowTest extends TestCase
             ->post(route('orders.status.update', $order), [
                 'status' => OrderStatus::CONFIRMED->value,
             ])
-            ->assertRedirect(route('orders.show', $order));
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors('courier_id');
 
-        $confirmed = $order->fresh();
-        $this->assertSame(OrderStatus::CONFIRMED, $confirmed->status);
-        $this->assertNotNull($confirmed->confirmed_at);
-        $this->assertNotNull($confirmed->discount_locked_at);
+        $stillHeld = $order->fresh();
+        $this->assertSame(OrderStatus::HOLD, $stillHeld->status);
+        $this->assertNull($stillHeld->confirmed_at);
 
         $this->actingAs($actor)
             ->post(route('orders.status.update', $order), [
@@ -129,7 +137,7 @@ class ResellerOrderWorkflowTest extends TestCase
             ->assertRedirect(route('orders.show', $order));
 
         $this->assertSame(OrderStatus::FIRST_ATTEMPT, $order->fresh()->status);
-        $this->assertGreaterThanOrEqual(4, OrderStatusHistory::query()->where('order_id', $order->id)->count());
+        $this->assertGreaterThanOrEqual(2, OrderStatusHistory::query()->where('order_id', $order->id)->count());
     }
 
     public function test_cancel_and_reactivate_within_window(): void
@@ -363,6 +371,7 @@ class ResellerOrderWorkflowTest extends TestCase
 
         $this->assertSame('20.00', $order->fresh()->discount_amount);
         $this->assertSame('230.00', $order->fresh()->customer_payable_amount);
+        $this->attachBookableCourier($order);
 
         $this->actingAs($actor)
             ->post(route('orders.discount.update', $order), ['discount_amount' => 999])
@@ -407,7 +416,8 @@ class ResellerOrderWorkflowTest extends TestCase
 
         $this->assertSame($snapshotUnit, (string) $order->fresh(['items'])->items->first()->unit_selling_price);
         $this->assertSame('20.00', $order->fresh()->discount_amount);
-        $this->assertSame('230.00', $order->fresh()->customer_payable_amount);
+        // Booking applies courier fee (600) onto customer payable after confirmation.
+        $this->assertSame('830.00', $order->fresh()->customer_payable_amount);
     }
 
     public function test_show_page_displays_operational_sections(): void
@@ -434,10 +444,10 @@ class ResellerOrderWorkflowTest extends TestCase
             ->assertSee('Financial Summary')
             ->assertSee('Order Items')
             ->assertSee('CCA Assignment')
-            ->assertSee('Comments / Activity')
+            ->assertSee('Order Timeline')
             ->assertSee('Status History')
             ->assertSee('Shipment / Courier')
-            ->assertSee('Change Status');
+            ->assertSee('Order Status');
     }
 
     /**
@@ -567,6 +577,65 @@ class ResellerOrderWorkflowTest extends TestCase
             'reseller_id' => $reseller->id,
             'supplier_id' => $supplier->id,
         ]);
+    }
+
+    private function attachBookableCourier(Order $order): void
+    {
+        $courier = Courier::query()->create([
+            'code' => 'COD'.strtoupper(substr(uniqid(), -4)),
+            'name' => 'COD Courier',
+            'is_active' => true,
+        ]);
+        $service = CourierService::query()->create([
+            'courier_id' => $courier->id,
+            'code' => 'COD',
+            'name' => 'Cash on Delivery',
+            'external_service_id' => 'ext-cod',
+            'is_active' => true,
+        ]);
+        $city = CourierCity::query()->create([
+            'courier_id' => $courier->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'external_city_code' => 'CMB'.Str::upper(Str::random(4)),
+            'external_district_code' => 'COL',
+            'is_active' => true,
+        ]);
+        CourierMarketPricing::query()->create([
+            'courier_id' => $courier->id,
+            'market_id' => $order->market_id,
+            'currency_id' => $order->currency_id,
+            'first_kg_fee' => 600.00,
+            'additional_kg_fee' => 100.00,
+            'is_active' => true,
+        ]);
+        SupplierCourierAccount::query()->create([
+            'supplier_id' => $order->supplier_id,
+            'courier_id' => $courier->id,
+            'account_label' => 'Primary',
+            'credentials_encrypted' => Crypt::encryptString(json_encode(['api_key' => 'secret'], JSON_THROW_ON_ERROR)),
+            'is_active' => true,
+        ]);
+        $order->forceFill([
+            'draft_courier_id' => $courier->id,
+            'draft_courier_service_id' => $service->id,
+            'draft_courier_city_id' => $city->id,
+        ])->save();
+
+        app(CourierBookingAdapterResolver::class)->register($courier->code, new class implements CourierBookingAdapter
+        {
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                return ['tracking_number' => 'WB-WORKFLOW-'.((string) $order->id)];
+            }
+        });
     }
 
     /**

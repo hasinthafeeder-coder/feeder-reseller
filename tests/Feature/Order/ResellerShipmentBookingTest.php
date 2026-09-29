@@ -86,6 +86,7 @@ class ResellerShipmentBookingTest extends TestCase
             'total_weight' => 1.5,
         ]);
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
         $this->registerSuccessfulAdapter($setup['courier']->code, 'TRK-RESELLER-1');
 
         $this->actingAs($actor)
@@ -146,6 +147,7 @@ class ResellerShipmentBookingTest extends TestCase
             'total_weight' => 0.5,
         ]);
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
         $this->registerSuccessfulAdapter($setup['courier']->code, 'TRK-CCA-1');
 
         $cca = $this->makeCcaWithPermission($owner->company, ['orders.view', 'orders.shipment.book']);
@@ -254,7 +256,8 @@ class ResellerShipmentBookingTest extends TestCase
             ->getJson(route('orders.courier-districts', $order).'?courier_service_id='.$foreignService->id)
             ->assertStatus(422);
 
-        $this->registerSuccessfulAdapter($setup['courier']->code, 'TRK-BAD-CITY');
+        $this->saveConfirmedDraft($order, $setup);
+        $this->registerSuccessfulAdapter($setup['courier']->code, 'TRK-SAVED-CITY');
         $this->actingAs($actor)
             ->post(route('orders.shipment.book', $order), [
                 'courier_id' => $setup['courier']->id,
@@ -262,7 +265,12 @@ class ResellerShipmentBookingTest extends TestCase
                 'courier_city_id' => $foreignCity->id,
             ])
             ->assertRedirect(route('orders.show', $order))
-            ->assertSessionHasErrors('courier_city_id');
+            ->assertSessionHas('success');
+
+        $shipment = Shipment::query()->where('order_id', $order->id)->first();
+        $this->assertNotNull($shipment);
+        $this->assertSame((int) $setup['city']->id, (int) $shipment->courier_city_id);
+        $this->assertNotSame((int) $foreignCity->id, (int) $shipment->courier_city_id);
     }
 
     public function test_location_endpoints_are_courier_and_state_scoped(): void
@@ -375,6 +383,7 @@ class ResellerShipmentBookingTest extends TestCase
         $this->assignSupplier($actor, $supplier);
         $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
         $setup = $this->makeCourierSetup($order, withAccount: false);
+        $this->saveConfirmedDraft($order, $setup);
 
         $probe = new \stdClass;
         $probe->called = false;
@@ -423,6 +432,7 @@ class ResellerShipmentBookingTest extends TestCase
             'total_weight' => 1.0,
         ]);
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
         $this->registerSuccessfulAdapter($setup['courier']->code, 'TRK-ONCE');
 
         $this->actingAs($actor)
@@ -485,6 +495,7 @@ class ResellerShipmentBookingTest extends TestCase
         $this->assignSupplier($actor, $supplier);
         $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
 
         $this->registerAdapter($setup['courier']->code, new class implements CourierBookingAdapter
         {
@@ -555,7 +566,9 @@ class ResellerShipmentBookingTest extends TestCase
             ->get(route('orders.show', $order))
             ->assertOk()
             ->assertSee('Shipment / Courier')
-            ->assertSee('Book Shipment');
+            ->assertSee('No shipment booked yet.')
+            ->assertDontSee('Book Shipment')
+            ->assertDontSee('Retry courier booking');
     }
 
     public function test_editable_order_form_exposes_assign_courier_controls(): void
@@ -573,9 +586,13 @@ class ResellerShipmentBookingTest extends TestCase
         $this->actingAs($actor)
             ->get(route('orders.show', $order))
             ->assertOk()
-            ->assertSee('Assign Courier')
-            ->assertSee('id="assignCourierDebug"', false)
-            ->assertDontSee('Book Shipment');
+            ->assertSee('Courier service')
+            ->assertSee('id="courierId"', false)
+            ->assertSee('id="courierDistrict"', false)
+            ->assertSee('id="courierCity"', false)
+            ->assertDontSee('Assign Courier')
+            ->assertDontSee('Book Shipment')
+            ->assertDontSee('Retry courier booking');
     }
 
     public function test_json_assign_courier_books_without_explicit_service_id(): void
@@ -595,6 +612,7 @@ class ResellerShipmentBookingTest extends TestCase
             'total_weight' => 1.0,
         ]);
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
         $this->registerSuccessfulAdapter($setup['courier']->code, 'WB-ASSIGN-1');
 
         $this->actingAs($actor)
@@ -647,17 +665,21 @@ class ResellerShipmentBookingTest extends TestCase
 
         $this->actingAs($actor)
             ->postJson(route('orders.shipment.book', $order), [
+                'courier_id' => $setup['courier']->id,
                 'courier_city_id' => $setup['city']->id,
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['courier_id']);
+            ->assertJsonValidationErrors(['order']);
+
+        $order->forceFill([
+            'status' => OrderStatus::CONFIRMED,
+            'confirmed_at' => now(),
+        ])->save();
 
         $this->actingAs($actor)
-            ->postJson(route('orders.shipment.book', $order), [
-                'courier_id' => $setup['courier']->id,
-            ])
+            ->postJson(route('orders.shipment.book', $order), [])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['courier_city_id']);
+            ->assertJsonValidationErrors(['courier_id']);
 
         $this->assertFalse($probe->called);
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
@@ -734,6 +756,7 @@ class ResellerShipmentBookingTest extends TestCase
         $this->assignSupplier($actor, $supplier);
         $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
 
         $this->registerAdapter($setup['courier']->code, new class implements CourierBookingAdapter
         {
@@ -998,6 +1021,7 @@ class ResellerShipmentBookingTest extends TestCase
         $this->assignSupplier($actor, $supplier);
         $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
 
         $probe = new \stdClass;
         $probe->callCount = 0;
@@ -1058,6 +1082,7 @@ class ResellerShipmentBookingTest extends TestCase
         $this->assignSupplier($actor, $supplier);
         $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
         $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
         $this->registerSuccessfulAdapter($setup['courier']->code, 'WB-CC-77');
 
         $this->actingAs($actor)
@@ -1320,6 +1345,641 @@ class ResellerShipmentBookingTest extends TestCase
         ], $variantOverrides));
     }
 
+    public function test_status_confirmation_books_saved_draft_courier(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier), [
+            'items_subtotal' => 500,
+            'customer_payable_amount' => 500,
+            'total_weight' => 1.0,
+        ]);
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-CONFIRM-1'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $order = $order->fresh(['shipment']);
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertNotNull($order->confirmed_at);
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame('WB-CONFIRM-1', $order->shipment?->tracking_number);
+        $this->assertSame((int) $setup['courier']->id, (int) $order->shipment?->courier_id);
+        $this->assertSame((int) $setup['city']->id, (int) $order->shipment?->courier_city_id);
+
+        $this->actingAs($actor)
+            ->get(route('orders.show', $order))
+            ->assertOk()
+            ->assertSee('WB-CONFIRM-1')
+            ->assertDontSee('Assign Courier')
+            ->assertDontSee('Book Shipment')
+            ->assertDontSee('Retry courier booking');
+    }
+
+    public function test_confirmation_booking_failure_preserves_status_and_retry_confirm_books(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+        $previousStatus = $order->status;
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                if ($this->probe->calls === 1) {
+                    throw ValidationException::withMessages([
+                        'booking' => ['Courier rejected the booking request.'],
+                    ]);
+                }
+
+                return ['tracking_number' => 'WB-RETRY-1'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors('booking');
+
+        $order = $order->fresh();
+        $this->assertSame($previousStatus, $order->status);
+        $this->assertNull($order->confirmed_at);
+        $this->assertNull($order->shipment);
+        $this->assertSame(1, $probe->calls);
+        $this->assertDatabaseHas('order_comments', [
+            'order_id' => $order->id,
+            'context_ref' => 'courier-booking-failure',
+        ]);
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $order = $order->fresh('shipment');
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertNotNull($order->confirmed_at);
+        $this->assertSame(2, $probe->calls);
+        $this->assertSame('WB-RETRY-1', $order->shipment?->tracking_number);
+        $this->assertSame((int) $setup['city']->id, (int) $order->shipment?->courier_city_id);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+    }
+
+    public function test_duplicate_status_confirmation_does_not_create_second_shipment(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-DUP-CC-1'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order));
+
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertSame('WB-DUP-CC-1', $order->fresh('shipment')->shipment?->tracking_number);
+        $this->assertSame(OrderStatus::CONFIRMED, $order->fresh()->status);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('callCenterPreConfirmStatuses')]
+    public function test_call_center_confirm_from_status_books_then_confirms(string $fromStatus): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'status' => $fromStatus,
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-CC-'.((string) $order->id)];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $order = $order->fresh(['shipment', 'statusHistories']);
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertNotNull($order->confirmed_at);
+        $this->assertSame(1, $probe->calls);
+        $this->assertNotNull($order->shipment);
+        $this->assertNotEmpty($order->shipment->tracking_number);
+
+        $history = OrderStatusHistory::query()
+            ->where('order_id', $order->id)
+            ->where('to_status', OrderStatus::CONFIRMED)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($history);
+        $this->assertSame($fromStatus, $history->from_status instanceof \BackedEnum
+            ? $history->from_status->value
+            : (string) $history->from_status);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('callCenterPreConfirmStatuses')]
+    public function test_call_center_confirm_courier_failure_preserves_status(string $fromStatus): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'status' => $fromStatus,
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+
+        $this->registerAdapter($setup['courier']->code, new class implements CourierBookingAdapter
+        {
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                throw ValidationException::withMessages([
+                    'booking' => ['Courier API unavailable.'],
+                ]);
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors('booking');
+
+        $order = $order->fresh(['shipment']);
+        $this->assertSame($fromStatus, $order->status instanceof \BackedEnum
+            ? $order->status->value
+            : (string) $order->status);
+        $this->assertNull($order->confirmed_at);
+        $this->assertNull($order->shipment);
+        $this->assertSame(0, Shipment::query()->where('order_id', $order->id)->count());
+    }
+
+    public function test_confirm_without_courier_city_is_rejected(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $order->forceFill([
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => null,
+        ])->save();
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-SHOULD-NOT'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors('courier_city_id');
+
+        $this->assertSame(0, $probe->calls);
+        $this->assertSame(OrderStatus::PENDING, $order->fresh()->status);
+        $this->assertNull($order->fresh()->confirmed_at);
+        $this->assertSame(0, Shipment::query()->where('order_id', $order->id)->count());
+    }
+
+    /**
+     * @return list<array{0: string}>
+     */
+    public static function callCenterPreConfirmStatuses(): array
+    {
+        return [
+            [OrderStatus::PENDING->value],
+            [OrderStatus::FIRST_ATTEMPT->value],
+            [OrderStatus::SECOND_ATTEMPT->value],
+            [OrderStatus::THIRD_ATTEMPT->value],
+            [OrderStatus::HOLD->value],
+        ];
+    }
+
+    public function test_reentering_confirmed_with_shipment_does_not_book_again(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+        $this->saveConfirmedDraft($order, $setup);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-ONCE-CONFIRM'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.shipment.book', $order))
+            ->assertRedirect(route('orders.show', $order));
+
+        $this->assertSame(1, $probe->calls);
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::HOLD->value,
+            ])
+            ->assertRedirect(route('orders.show', $order));
+
+        $this->actingAs($actor)
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
+        $this->assertSame(OrderStatus::CONFIRMED, $order->fresh()->status);
+    }
+
+    public function test_edit_saves_courier_locally_without_booking(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $variant->product->forceFill(['price_locked' => true])->save();
+        $order = $this->makeOrder($actor, $supplier, $variant);
+        $setup = $this->makeCourierSetup($order);
+        $otherCity = CourierCity::query()
+            ->where('courier_id', $setup['courier']->id)
+            ->where('city_name', 'Colombo 07')
+            ->firstOrFail();
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-SHOULD-NOT'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->post(route('orders.update', $order), [
+                'market_id' => $order->market_id,
+                'supplier_id' => $order->supplier_id,
+                'customer_name' => 'Edited Customer',
+                'primary_phone' => '0701888777',
+                'address_line1' => '15 Edited Road',
+                'district_name' => 'Colombo',
+                'city_name' => 'Colombo 07',
+                'courier_id' => $setup['courier']->id,
+                'courier_city_id' => $otherCity->id,
+                'discount_amount' => 0,
+                'items' => [
+                    [
+                        'product_variant_id' => $variant->id,
+                        'quantity' => 1,
+                        'selected_selling_price' => 250,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $order = $order->fresh();
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+        $this->assertSame((int) $setup['courier']->id, (int) $order->draft_courier_id);
+        $this->assertSame((int) $setup['service']->id, (int) $order->draft_courier_service_id);
+        $this->assertSame((int) $otherCity->id, (int) $order->draft_courier_city_id);
+        $this->assertNull($order->shipment);
+        $this->assertSame(0, $probe->calls);
+    }
+
+    public function test_fee_preview_does_not_call_courier_adapter(): void
+    {
+        $actor = $this->makeResellerWithPermission(['orders.view', 'orders.shipment.book']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier), [
+            'items_subtotal' => 1000,
+            'discount_amount' => 100,
+            'customer_payable_amount' => 900,
+            'total_weight' => 2.2,
+        ]);
+        $setup = $this->makeCourierSetup($order);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-FEE'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->getJson(route('orders.courier-fee-preview', $order).'?courier_id='.$setup['courier']->id)
+            ->assertOk()
+            ->assertJsonPath('data.courier_fee_amount', 800);
+
+        $this->assertSame(0, $probe->calls);
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+    }
+
+    public function test_cod_confirmation_without_saved_courier_does_not_confirm_or_book(): void
+    {
+        $actor = $this->makeResellerWithPermission([
+            'orders.view',
+            'orders.status.update',
+            'orders.shipment.book',
+        ]);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($actor, $supplier);
+        $order = $this->makeOrder($actor, $supplier, $this->makeVariant($supplier));
+        $setup = $this->makeCourierSetup($order);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        $this->registerAdapter($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-COD-SHOULD-NOT'];
+            }
+        });
+
+        $this->actingAs($actor)
+            ->from(route('orders.show', $order))
+            ->post(route('orders.status.update', $order), [
+                'status' => OrderStatus::CONFIRMED->value,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors('courier_id');
+
+        $fresh = $order->fresh();
+        $this->assertSame(OrderStatus::PENDING, $fresh->status);
+        $this->assertNull($fresh->confirmed_at);
+        $this->assertNull($fresh->shipment);
+        $this->assertSame(0, $probe->calls);
+    }
+
+    /**
+     * @param  array{courier: Courier, service: CourierService, city: CourierCity}  $setup
+     */
+    private function saveConfirmedDraft(Order $order, array $setup): void
+    {
+        $order->forceFill([
+            'status' => OrderStatus::CONFIRMED,
+            'confirmed_at' => now(),
+            'draft_courier_id' => $setup['courier']->id,
+            'draft_courier_service_id' => $setup['service']->id,
+            'draft_courier_city_id' => $setup['city']->id,
+        ])->save();
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -1539,6 +2199,7 @@ class ResellerShipmentBookingTest extends TestCase
         ]);
 
         $this->registerAdapter($setup['courier']->code, app(RoyalBookingAdapter::class));
+        $this->saveConfirmedDraft($order, $setup);
 
         return [
             'actor' => $actor,

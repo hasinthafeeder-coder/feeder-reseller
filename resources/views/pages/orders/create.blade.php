@@ -64,8 +64,6 @@
             'formAction' => $catalogRoutes['store'],
             'catalogRoutes' => $catalogRoutes,
             'canBanCustomer' => $canBanCustomer ?? false,
-            'canAssignCourier' => $canAssignCourier ?? false,
-            'shipmentBootstrap' => $shipmentBootstrap ?? null,
         ])
         <div id="orderUiToast" class="alert alert-success prototype-toast hidden" role="status"></div>
     </div>
@@ -83,8 +81,6 @@
         'catalogRoutes' => $catalogRoutes,
         'duplicateOrders' => $duplicateOrders ?? [],
         'oldItems' => $oldItems ?? [],
-        'canAssignCourier' => $canAssignCourier ?? false,
-        'shipmentBootstrap' => $shipmentBootstrap ?? null,
     ])
 @endpush
 @endunless

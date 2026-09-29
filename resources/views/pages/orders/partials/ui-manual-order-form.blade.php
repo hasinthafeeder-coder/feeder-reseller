@@ -70,6 +70,27 @@
                         </div>
                     </div>
 
+                    {{-- Product / Order items (market tick boxes at top) --}}
+                    <div class="card bg-white rounded-10 border border-white order-create-section" data-section="items">
+                        <div class="p-20 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h4 class="fs-18 mb-0">Order items</h4>
+                            <button type="button" class="btn btn-sm btn-primary text-white" id="addLineBtn">
+                                Add item
+                            </button>
+                        </div>
+                        <div class="p-20">
+                            <div class="mb-3">
+                                <label class="label fs-14 mb-2 d-block">Market</label>
+                                <div class="market-checks" id="marketChecks" role="group" aria-label="Market selection"></div>
+                                <input type="hidden" name="market_id" id="marketId" value="{{ $fd('market_id', '') }}">
+                            </div>
+
+                            <div id="afterHoursPanel" class="alert alert-warning mb-3 hidden" role="alert"></div>
+
+                            <div id="orderLines"></div>
+                        </div>
+                    </div>
+
                     {{-- Delivery: address + courier in one container --}}
                     <div class="card bg-white rounded-10 border border-white order-create-section" data-section="delivery">
                         <div class="p-20 border-bottom">
@@ -105,51 +126,12 @@
                                 <input type="hidden" name="district_name" id="districtNameValue" value="{{ $fd('district_name', '') }}">
                                 <input type="hidden" name="city_name" id="cityNameValue" value="{{ $fd('city_name', '') }}">
                                 <input type="hidden" name="courier_city_id" id="courierCityIdValue" value="{{ $fd('courier_city_id', '') }}">
-                                @if ($canAssignCourier ?? false)
-                                    <div class="col-12">
-                                        <div id="assignedCourierPanel" class="alert alert-success {{ empty($shipmentBootstrap['waybill'] ?? null) ? 'hidden' : '' }}" role="status">
-                                            <div class="fw-medium" id="assignedCourierName">{{ $shipmentBootstrap['courier']['name'] ?? '' }}</div>
-                                            <div class="fs-13" id="assignedCourierWaybill">{{ ($shipmentBootstrap['waybill'] ?? '') !== '' ? 'Waybill: '.$shipmentBootstrap['waybill'] : '' }}</div>
-                                        </div>
-                                        <div id="assignCourierError" class="text-danger fs-13 mb-2 hidden" role="alert"></div>
-                                        <div id="assignCourierDebug" class="alert alert-danger mb-2 hidden" role="alert">
-                                            <div class="fw-medium mb-1" id="assignCourierDebugTitle"></div>
-                                            <div class="fs-13 mb-2" id="assignCourierDebugMeta"></div>
-                                            <div class="fs-13 fw-medium">Provider Response</div>
-                                            <pre id="assignCourierDebugResponse" class="assign-courier-debug-pre"></pre>
-                                            <div class="fs-13 fw-medium mt-2">Request Payload</div>
-                                            <pre id="assignCourierDebugRequest" class="assign-courier-debug-pre"></pre>
-                                        </div>
-                                        <button type="button" class="btn btn-primary text-white" id="assignCourierBtn" disabled>
-                                            Assign Courier
-                                        </button>
-                                        <p class="fs-13 text-body mb-0 mt-2" id="assignCourierHint">
-                                            Select courier, state/district, and city, then assign to create the courier shipment.
-                                        </p>
-                                    </div>
-                                @endif
+                                <div class="col-12">
+                                    <p class="fs-13 text-body mb-0">
+                                        Courier, district, and city are saved with the order. The waybill is created when the order is confirmed.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-
-                    {{-- Product / Order items (market tick boxes at top) --}}
-                    <div class="card bg-white rounded-10 border border-white order-create-section" data-section="items">
-                        <div class="p-20 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <h4 class="fs-18 mb-0">Order items</h4>
-                            <button type="button" class="btn btn-sm btn-primary text-white" id="addLineBtn">
-                                Add item
-                            </button>
-                        </div>
-                        <div class="p-20">
-                            <div class="mb-3">
-                                <label class="label fs-14 mb-2 d-block">Market</label>
-                                <div class="market-checks" id="marketChecks" role="group" aria-label="Market selection"></div>
-                                <input type="hidden" name="market_id" id="marketId" value="{{ $fd('market_id', '') }}">
-                            </div>
-
-                            <div id="afterHoursPanel" class="alert alert-warning mb-3 hidden" role="alert"></div>
-
-                            <div id="orderLines"></div>
                         </div>
                     </div>
 

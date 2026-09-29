@@ -103,7 +103,8 @@ class ResellerOrderPoolIntegrationTest extends TestCase
         $variant = $this->makeVariant($supplier);
 
         $this->actingAs($cca)->post(route('orders.store'), $this->payload($supplier, $variant, [
-            'intent' => 'confirm',
+            'intent' => 'send_to_call_center',
+            'assignment_target' => 'unassigned',
         ]))->assertRedirect();
 
         $order = Order::query()->where('reseller_company_id', $owner->company_id)->latest('id')->first();
@@ -430,6 +431,7 @@ class ResellerOrderPoolIntegrationTest extends TestCase
             'status' => ProductStatus::ACTIVE->value,
             'system_visible' => true,
             'web_visible' => true,
+            'price_locked' => true,
             'created_by' => $supplier->id,
             'updated_by' => $supplier->id,
         ]);
