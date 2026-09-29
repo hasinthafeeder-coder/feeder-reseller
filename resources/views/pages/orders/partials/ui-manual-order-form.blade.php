@@ -256,19 +256,34 @@
                 </div>
             </div>
 
+            @php
+                $statusChangeSavesOrder = $isEditMode
+                    && ($showFooterStatusActions ?? false)
+                    && ($canUpdateStatus ?? false);
+            @endphp
             <div class="order-create-actions">
-                <div class="d-flex flex-column flex-sm-row justify-content-sm-end gap-2">
-                    @if ($isEditMode)
-                        <button type="button" class="btn btn-primary text-white" id="saveOrderChangesBtn">
-                            Save changes
-                        </button>
-                    @else
-                        <button type="button" class="btn btn-light border" id="sendToCallCenterBtn">
-                            Send to Call Center
-                        </button>
-                        <button type="button" class="btn btn-primary text-white" id="confirmOrderBtn">
-                            Confirm Order
-                        </button>
+                <div class="order-create-actions-row">
+                    @if ($isEditMode && ($showFooterStatusActions ?? false) && isset($order))
+                        @include('pages.orders.partials.ui-order-status-actions', [
+                            'showStatusModal' => false,
+                            'statusActionsLayout' => 'inline',
+                        ])
+                    @endif
+                    @if (! $statusChangeSavesOrder)
+                        <div class="order-create-actions-submit">
+                            @if ($isEditMode)
+                                <button type="button" class="btn btn-primary text-white" id="saveOrderChangesBtn">
+                                    Save changes
+                                </button>
+                            @else
+                                <button type="button" class="btn btn-light border" id="sendToCallCenterBtn">
+                                    Send to Call Center
+                                </button>
+                                <button type="button" class="btn btn-primary text-white" id="confirmOrderBtn">
+                                    Confirm Order
+                                </button>
+                            @endif
+                        </div>
                     @endif
                 </div>
             </div>

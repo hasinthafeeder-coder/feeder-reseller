@@ -347,6 +347,7 @@
         @if ($canEditOrder)
             @include('pages.orders.partials.ui-manual-order-form', [
                 'orderFormMode' => 'edit',
+                'showFooterStatusActions' => true,
                 'formDefaults' => $editFormDefaults ?? [],
                 'formAction' => $catalogRoutes['update'] ?? route('orders.update', $order),
                 'catalogRoutes' => $catalogRoutes ?? [],

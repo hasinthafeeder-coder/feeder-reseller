@@ -381,7 +381,9 @@ class ResellerCallCenterOrdersTest extends TestCase
             ->assertSee('Call Center Customer')
             ->assertSee('0701122334')
             ->assertSee('id="manualOrderForm"', false)
-            ->assertSee('Save changes')
+            ->assertDontSee('id="saveOrderChangesBtn"', false)
+            ->assertSee('id="orderStatusActionsCard"', false)
+            ->assertSee('order-status-actions-footer', false)
             ->assertSee('name="customer_name"', false)
             ->assertDontSee('Update discount');
     }

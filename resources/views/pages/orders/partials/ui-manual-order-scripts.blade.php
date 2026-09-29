@@ -1659,6 +1659,105 @@
         return true;
     }
 
+    function firstValidationMessage(payload) {
+        const errors = payload && payload.errors ? payload.errors : null;
+        if (!errors || typeof errors !== 'object') {
+            return (payload && payload.message) || 'Unable to save order changes.';
+        }
+
+        const keys = Object.keys(errors);
+        for (let i = 0; i < keys.length; i += 1) {
+            const messages = errors[keys[i]];
+            if (Array.isArray(messages) && messages.length) {
+                return String(messages[0]);
+            }
+            if (typeof messages === 'string' && messages) {
+                return messages;
+            }
+        }
+
+        return (payload && payload.message) || 'Unable to save order changes.';
+    }
+
+    async function saveOrderChangesViaAjax() {
+        syncLocationHiddenFields();
+        orderIntentInput.value = '';
+        assignmentTargetInput.value = '';
+        assignCcaIdInput.value = '';
+
+        const response = await fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: new FormData(form),
+            credentials: 'same-origin',
+        });
+
+        let payload = {};
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = {};
+        }
+
+        if (response.ok) {
+            return { ok: true, payload: payload };
+        }
+
+        if (response.status === 422 && Array.isArray(payload.duplicate_orders) && payload.duplicate_orders.length) {
+            showDuplicatePanel(payload.duplicate_orders);
+            return { ok: false, duplicates: true, payload: payload };
+        }
+
+        return { ok: false, payload: payload };
+    }
+
+    function bindStatusConfirmSaveThenChange() {
+        const statusForm = document.getElementById('orderStatusConfirmForm');
+        const statusSubmit = document.getElementById('orderStatusConfirmSubmit');
+        if (!isEditMode || !form || !statusForm) {
+            return;
+        }
+
+        if (statusSubmit) {
+            statusSubmit.textContent = 'Save & change status';
+        }
+
+        statusForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            if (!prepareEditSubmit()) {
+                return;
+            }
+
+            if (statusSubmit) {
+                statusSubmit.disabled = true;
+            }
+
+            try {
+                const result = await saveOrderChangesViaAjax();
+                if (!result.ok) {
+                    if (result.duplicates) {
+                        window.alert('Potential duplicate orders were found. Review them and confirm Continue, then try again.');
+                    } else {
+                        window.alert(firstValidationMessage(result.payload));
+                    }
+                    return;
+                }
+
+                HTMLFormElement.prototype.submit.call(statusForm);
+            } catch (error) {
+                window.alert('Unable to save order changes. Please try again.');
+            } finally {
+                if (statusSubmit) {
+                    statusSubmit.disabled = false;
+                }
+            }
+        });
+    }
+
     if (saveOrderChangesBtn) {
         saveOrderChangesBtn.addEventListener('click', () => {
             if (!prepareEditSubmit()) return;
@@ -1668,6 +1767,8 @@
             submitForm();
         });
     }
+
+    bindStatusConfirmSaveThenChange();
 
     if (confirmOrderBtn) confirmOrderBtn.addEventListener('click', () => {
         if (!prepareSubmit('confirm', '', '')) {

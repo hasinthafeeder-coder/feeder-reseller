@@ -194,12 +194,38 @@
             padding-bottom: 0.5rem;
         }
 
-        .order-create-prototype .order-create-actions .btn {
+        .order-create-prototype .order-create-actions-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.75rem 1rem;
+        }
+
+        .order-create-prototype .order-status-actions-footer {
+            flex: 1 1 16rem;
+            margin-right: auto;
+        }
+
+        .order-create-prototype .order-create-actions-submit {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-left: auto;
+            width: 100%;
+        }
+
+        .order-create-prototype .order-create-actions-submit .btn {
             width: 100%;
         }
 
         @media (min-width: 576px) {
-            .order-create-prototype .order-create-actions .btn {
+            .order-create-prototype .order-create-actions-submit {
+                flex-direction: row;
+                width: auto;
+            }
+
+            .order-create-prototype .order-create-actions-submit .btn {
                 width: auto;
             }
         }
