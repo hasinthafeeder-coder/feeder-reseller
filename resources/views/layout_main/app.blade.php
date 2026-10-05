@@ -22,6 +22,18 @@
     <!-- Title -->
     <title>Fila - Bootstrap 5 Admin Dashboard Template</title>
     @stack('styles')
+    <style>
+        #layout-menu .menu-link.active,
+        #layout-menu .menu-link.active .title,
+        #layout-menu .menu-sub .menu-link.active {
+            color: #EF4923;
+            font-weight: 600;
+        }
+
+        #layout-menu .menu-link.active .menu-icon {
+            color: #EF4923;
+        }
+    </style>
 </head>
 
 <body class="bg-body-bg">
@@ -96,7 +108,15 @@
                         @if ($item->getTitle() === 'Orders')
                             @include('pages.orders.partials.ui-sidebar-orders')
                         @elseif ($item->hasChildren())
-                            <li class="menu-item">
+                            @php
+                                $isOpen = false;
+                                foreach ($item->getChildren() as $child) {
+                                    if ($child->getRoute() && Route::has($child->getRoute()) && request()->routeIs($child->getRoute())) {
+                                        $isOpen = true;
+                                    }
+                                }
+                            @endphp
+                            <li class="menu-item {{ $isOpen ? 'open' : '' }}">
                                 <a href="javascript:void(0);" class="menu-link menu-toggle">
                                     @if ($item->getIcon())
                                         <span class="material-symbols-outlined menu-icon">{{ $item->getIcon() }}</span>
@@ -107,8 +127,12 @@
                                 <ul class="menu-sub">
                                     @foreach ($item->getChildren() as $child)
                                         @if ($child->getRoute() && Route::has($child->getRoute()))
-                                            <li class="menu-item">
-                                                <a href="{{ route($child->getRoute()) }}" class="menu-link">
+                                            @php
+                                                $childActive = request()->routeIs($child->getRoute());
+                                            @endphp
+                                            <li class="menu-item {{ $childActive ? 'active' : '' }}">
+                                                <a href="{{ route($child->getRoute()) }}"
+                                                    class="menu-link {{ $childActive ? 'active' : '' }}">
                                                     {{ $child->getTitle() }}
                                                 </a>
                                             </li>
@@ -123,8 +147,12 @@
                                 </ul>
                             </li>
                         @elseif ($item->getRoute() && Route::has($item->getRoute()))
-                            <li class="menu-item">
-                                <a href="{{ route($item->getRoute()) }}" class="menu-link">
+                            @php
+                                $isActive = request()->routeIs($item->getRoute());
+                            @endphp
+                            <li class="menu-item {{ $isActive ? 'active' : '' }}">
+                                <a href="{{ route($item->getRoute()) }}"
+                                    class="menu-link {{ $isActive ? 'active' : '' }}">
                                     @if ($item->getIcon())
                                         <span class="material-symbols-outlined menu-icon">{{ $item->getIcon() }}</span>
                                     @endif
