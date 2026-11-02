@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "262a31da4dcab0025ef1fa2f12187516",
+    "content-hash": "821aa1f99ccd76224c039750e1f26f29",
     "packages": [
         {
             "name": "brick/math",
@@ -513,12 +513,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/hasinthafeeder-coder/feeder-core.git",
-                "reference": "8cb28c68461ab2f8a01225bd4efd485b01573804"
+                "reference": "0f4cdf65272dfc352905bf911ec9c75a9d1862a9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/hasinthafeeder-coder/feeder-core/zipball/8cb28c68461ab2f8a01225bd4efd485b01573804",
-                "reference": "8cb28c68461ab2f8a01225bd4efd485b01573804",
+                "url": "https://api.github.com/repos/hasinthafeeder-coder/feeder-core/zipball/0f4cdf65272dfc352905bf911ec9c75a9d1862a9",
+                "reference": "0f4cdf65272dfc352905bf911ec9c75a9d1862a9",
                 "shasum": ""
             },
             "require": {

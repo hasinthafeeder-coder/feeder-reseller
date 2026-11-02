@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CallCenter\AgentUiController;
+use App\Http\Controllers\Finance\FinancialOverviewController;
 use App\Http\Controllers\FileProxyController;
 use App\Http\Controllers\Product\ProductController;
 use App\Http\Controllers\ProfileController;
@@ -126,6 +127,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
+    Route::get('/finance/overview', [FinancialOverviewController::class, 'index'])
+        ->middleware('permission:dashboard.view')
+        ->name('finance.overview');
+
+    require __DIR__ . '/settlements.php';
     require __DIR__ . '/orders.php';
 });
 

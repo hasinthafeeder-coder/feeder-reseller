@@ -147,12 +147,13 @@ class ResellerOrderPoolIntegrationTest extends TestCase
         $this->assertSame(3, $statusCounts['PENDING']);
         $this->assertSame(0, $statusCounts['CONFIRMED']);
 
+        // Phase 2B: Ongoing Orders HTML is mock/UI-only; company visibility stays on the JSON bootstrap.
         $this->actingAs($cca)
-            ->get(route('orders.index', ['tab' => 'company']))
+            ->getJson(route('orders.index', ['tab' => 'company', 'json' => 1]))
             ->assertOk()
-            ->assertSee('ORD-ASSIGNED-1')
-            ->assertSee('ORD-POOL-1')
-            ->assertSee('ORD-UNASSIGNED-1');
+            ->assertJsonFragment(['orderNumber' => 'ORD-ASSIGNED-1'])
+            ->assertJsonFragment(['orderNumber' => 'ORD-POOL-1'])
+            ->assertJsonFragment(['orderNumber' => 'ORD-UNASSIGNED-1']);
 
         $this->actingAs($reseller)
             ->getJson(route('orders.index', ['json' => 1, 'assignment' => 'pool']))

@@ -4,6 +4,8 @@ namespace Tests\Feature\Order;
 
 use Carbon\CarbonImmutable;
 use Feeder\Core\Enums\CompanyStatus;
+use Feeder\Core\Enums\OrderPaymentMethod;
+use Feeder\Core\Enums\OrderPaymentReviewStatus;
 use Feeder\Core\Enums\OrderSource;
 use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Enums\OrderType;
@@ -18,6 +20,7 @@ use Feeder\Core\Models\CourierCity;
 use Feeder\Core\Models\CourierMarketPricing;
 use Feeder\Core\Models\CourierService;
 use Feeder\Core\Models\Order;
+use Feeder\Core\Models\OrderPaymentSubmission;
 use Feeder\Core\Models\OrderStatusHistory;
 use Feeder\Core\Models\Permission;
 use Feeder\Core\Models\Portal;
@@ -32,8 +35,10 @@ use Feeder\Core\Models\User;
 use Feeder\Core\Services\Courier\CourierBookingAdapterResolver;
 use Feeder\Core\Services\Order\CustomerBanService;
 use Feeder\Core\Services\Order\CustomerIdentityService;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Support\SetsUpMarketData;
 use Tests\Support\UsesMysqlTestDatabase;
@@ -50,7 +55,27 @@ class ResellerManualOrderCreateTest extends TestCase
 
         $this->setUpMysqlTestDatabase();
         $this->seedMarketLookups();
-        config(['cache.default' => 'array']);
+        config([
+            'cache.default' => 'array',
+            'feeder.file_server.url' => 'http://files.test',
+            'feeder.file_server.api_key' => 'test-file-key',
+        ]);
+
+        Http::fake([
+            'files.test/*' => Http::response([
+                'message' => 'File uploaded successfully.',
+                'file' => [
+                    'uuid' => 'CREATEBT01',
+                    'application' => 'RESELLER',
+                    'entity_type' => 'ORDER_PAYMENT',
+                    'entity_uuid' => 'ENTITY0001',
+                    'category' => 'PAYMENT_PROOF',
+                    'original_name' => 'slip.pdf',
+                    'mime_type' => 'application/pdf',
+                    'size' => 120,
+                ],
+            ], 201),
+        ]);
     }
 
     protected function tearDown(): void
@@ -505,6 +530,18 @@ class ResellerManualOrderCreateTest extends TestCase
         $this->assertNotNull($firstOrder);
         $first->assertRedirect(route('orders.show', $firstOrder));
 
+        // Only DISPATCHED matches trigger the duplicate warning.
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'primary_phone' => $phone,
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+        $this->assertSame(2, Order::query()->where('primary_phone_snapshot', $phone)->count());
+
+        $firstOrder->forceFill(['status' => OrderStatus::DISPATCHED])->save();
+
         $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
             'supplier_id' => $supplier->id,
             'primary_phone' => $phone,
@@ -515,7 +552,7 @@ class ResellerManualOrderCreateTest extends TestCase
             ->assertSessionHas('duplicate_orders')
             ->assertSessionHasErrors(['duplicate']);
 
-        $this->assertSame(1, Order::query()->where('primary_phone_snapshot', $phone)->count());
+        $this->assertSame(2, Order::query()->where('primary_phone_snapshot', $phone)->count());
 
         $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
             'supplier_id' => $supplier->id,
@@ -526,7 +563,7 @@ class ResellerManualOrderCreateTest extends TestCase
             ],
         ]))->assertRedirect();
 
-        $this->assertSame(2, Order::query()->where('primary_phone_snapshot', $phone)->count());
+        $this->assertSame(3, Order::query()->where('primary_phone_snapshot', $phone)->count());
     }
 
     public function test_cancelled_duplicate_excluded(): void
@@ -579,6 +616,8 @@ class ResellerManualOrderCreateTest extends TestCase
                 'after_hours_penalty_amount',
                 'timezone',
                 'local_time',
+                'operating_start',
+                'operating_end',
                 'currency_code',
             ]]);
 
@@ -1392,6 +1431,162 @@ class ResellerManualOrderCreateTest extends TestCase
         $this->assertNotEmpty($catalog);
         $this->assertSame($catalog, $orderCouriers);
         $this->assertSame((int) $setup['courier']->id, (int) $catalog[0]['id']);
+    }
+
+    public function test_bank_transfer_manual_create_records_pending_submission_without_confirming(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier, ['weight' => 1.0, 'selling_price' => 250.00]);
+        $setup = $this->makeCourierSetup($supplier);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-BANK-CREATE-SHOULD-NOT'];
+            }
+        });
+
+        $phone = '070'.random_int(1000000, 9999999);
+
+        $response = $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'primary_phone' => $phone,
+            'intent' => 'confirm',
+            'payment_method' => OrderPaymentMethod::BANK_TRANSFER->value,
+            'payment_slip' => UploadedFile::fake()->create('slip.pdf', 120, 'application/pdf'),
+            'reference_number' => 'BT-CREATE-100',
+            'amount' => 350.50,
+            'description' => 'Paid via bank transfer on create',
+            'courier_id' => $setup['courier']->id,
+            'courier_service_id' => $setup['service']->id,
+            'courier_city_id' => $setup['city']->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]));
+
+        $order = Order::query()->where('primary_phone_snapshot', $phone)->first();
+        $this->assertNotNull($order);
+        $response->assertRedirect(route('orders.show', $order))
+            ->assertSessionHas('success');
+
+        $this->assertSame(OrderStatus::PENDING, $order->status);
+        $this->assertNull($order->confirmed_at);
+        $this->assertNull($order->shipment);
+        $this->assertSame(0, $probe->calls);
+        $this->assertSame((int) $setup['courier']->id, (int) $order->draft_courier_id);
+        $this->assertSame('LKR', (string) $order->currency_code_snapshot);
+
+        $submission = OrderPaymentSubmission::query()->where('order_id', $order->id)->latest('id')->first();
+        $this->assertNotNull($submission);
+        $this->assertSame(OrderPaymentMethod::BANK_TRANSFER, $submission->method);
+        $this->assertSame(OrderPaymentReviewStatus::PENDING_REVIEW, $submission->review_status);
+        $this->assertSame('BT-CREATE-100', $submission->reference_number);
+        $this->assertSame('350.50', (string) $submission->amount);
+        $this->assertSame('CREATEBT01', $submission->slip_file_uuid);
+        $this->assertSame(1, OrderPaymentSubmission::query()->where('order_id', $order->id)->count());
+    }
+
+    public function test_bank_transfer_manual_create_requires_payment_proof_and_courier(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+
+        $before = Order::query()->count();
+
+        $submissionsBefore = OrderPaymentSubmission::query()->count();
+
+        $this->actingAs($reseller)
+            ->from(route('orders.create'))
+            ->post(route('orders.store'), $this->minimalPayload([
+                'supplier_id' => $supplier->id,
+                'payment_method' => OrderPaymentMethod::BANK_TRANSFER->value,
+                'reference_number' => 'BT-MISSING-SLIP',
+                'amount' => 100,
+                'description' => 'Missing slip should fail',
+                'items' => [
+                    ['product_variant_id' => $variant->id, 'quantity' => 1],
+                ],
+            ]))
+            ->assertRedirect(route('orders.create'))
+            ->assertSessionHasErrors(['payment_slip', 'courier_id', 'courier_city_id']);
+
+        $this->assertSame($before, Order::query()->count());
+        $this->assertSame($submissionsBefore, OrderPaymentSubmission::query()->count());
+    }
+
+    public function test_cod_manual_create_remains_unchanged_without_payment_submission(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier, ['selling_price' => 250.00]);
+        $setup = $this->makeCourierSetup($supplier);
+
+        $probe = new \stdClass;
+        $probe->calls = 0;
+        app(CourierBookingAdapterResolver::class)->register($setup['courier']->code, new class($probe) implements CourierBookingAdapter
+        {
+            public function __construct(private readonly object $probe)
+            {
+            }
+
+            public function book(
+                Order $order,
+                Courier $courier,
+                CourierService $service,
+                CourierCity $city,
+                ?SupplierCourierAccount $account,
+                float $weightKg,
+                float $courierFee,
+            ): array {
+                $this->probe->calls++;
+
+                return ['tracking_number' => 'WB-COD-STILL-WORKS'];
+            }
+        });
+
+        $this->actingAs($reseller)->post(route('orders.store'), $this->minimalPayload([
+            'supplier_id' => $supplier->id,
+            'intent' => 'confirm',
+            'payment_method' => OrderPaymentMethod::COD->value,
+            'courier_id' => $setup['courier']->id,
+            'courier_service_id' => $setup['service']->id,
+            'courier_city_id' => $setup['city']->id,
+            'district_name' => 'Colombo',
+            'city_name' => 'Colombo 03',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]))->assertRedirect();
+
+        $order = Order::query()->where('reseller_company_id', $reseller->company_id)->latest('id')->first();
+        $this->assertNotNull($order);
+        $this->assertSame(OrderStatus::CONFIRMED, $order->status);
+        $this->assertSame(1, $probe->calls);
+        $this->assertSame(0, OrderPaymentSubmission::query()->where('order_id', $order->id)->count());
     }
 
     /**

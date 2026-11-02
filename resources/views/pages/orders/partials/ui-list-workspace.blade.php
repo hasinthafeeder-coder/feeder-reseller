@@ -3,94 +3,56 @@
 @endphp
 
 @php
-    $isCallCenterList = ($orderUiWorkspace ?? '') === 'call-center';
-    $listTitle = $isCallCenterList ? 'Call Center Orders' : 'Archived Orders';
-    $listCopy = $isCallCenterList
-        ? 'Assigned and pool orders for call-center handling within your reseller company.'
-        : 'Completed, returned, and expired orders. Operational workflow still ends at Confirmed.';
-    $archiveKey = $orderUiArchive ?? 'completed';
+    $listTitle = 'Call Center Orders';
+    $listCopy = 'Assigned and pool orders for call-center handling within your reseller company.';
 
-    if ($isCallCenterList) {
-        $orderUiListPayload = $bootstrap ?? [
-            'workspace' => 'call-center',
-            'orders' => [],
-            'ccas' => [],
-            'suppliers' => [],
-            'statuses' => [],
-            'sources' => [],
-            'counts' => ['all' => 0, 'assigned' => 0, 'unassigned' => 0, 'pool' => 0, 'my' => 0],
-            'status_counts' => ['all' => 0],
-            'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 25, 'total' => 0],
-            'filters' => [],
-            'selected_product' => null,
-            'actor' => ['role' => 'reseller', 'can_assign' => false, 'can_claim' => false, 'can_create' => false],
-            'pool_lock' => null,
-            'routes' => [
-                'index' => route('orders.index', ['workspace' => 'call-center']),
-                'show' => url('/orders'),
-                'create' => route('orders.create'),
-                'bulk_assign' => route('orders.bulk.assign'),
-                'bulk_pool' => route('orders.bulk.pool'),
-                'claim' => url('/orders'),
-                'filter_products' => route('orders.filter-products'),
-            ],
-        ];
-        $orderUiListPayload['workspace'] = 'call-center';
-        $orderUiListPayload['live'] = true;
-    } else {
-        extract(require resource_path('views/pages/orders/partials/ui-mock-data.php'));
-        $orderUiListPayload = [
-            'orders' => $orderUiMockOrders,
-            'ccas' => $orderUiMockCcas,
-            'suppliers' => $orderUiMockSuppliers,
-            'products' => $orderUiMockProducts,
-            'perPage' => 5,
-            'workspace' => 'archived',
-            'archive' => $archiveKey,
-            'live' => false,
-            'showUrl' => $orderUiUrls['view'],
-            'holdUrl' => $orderUiUrls['hold'],
-            'expiringUrl' => $orderUiUrls['expiring'],
-            'expiredUrl' => $orderUiUrls['expired'],
-            'confirmUrl' => $orderUiUrls['confirm'],
-        ];
-    }
+    $orderUiListPayload = $bootstrap ?? [
+        'workspace' => 'call-center',
+        'orders' => [],
+        'ccas' => [],
+        'suppliers' => [],
+        'statuses' => [],
+        'sources' => [],
+        'counts' => ['all' => 0, 'assigned' => 0, 'unassigned' => 0, 'pool' => 0, 'my' => 0],
+        'status_counts' => ['all' => 0],
+        'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 25, 'total' => 0],
+        'filters' => [],
+        'selected_product' => null,
+        'actor' => ['role' => 'reseller', 'can_assign' => false, 'can_claim' => false, 'can_create' => false],
+        'pool_lock' => null,
+        'routes' => [
+            'index' => route('orders.index', ['workspace' => 'call-center']),
+            'show' => url('/orders'),
+            'create' => route('orders.create'),
+            'bulk_assign' => route('orders.bulk.assign'),
+            'bulk_pool' => route('orders.bulk.pool'),
+            'claim' => url('/orders'),
+            'filter_products' => route('orders.filter-products'),
+        ],
+    ];
+    $orderUiListPayload['workspace'] = 'call-center';
+    $orderUiListPayload['live'] = true;
 
     $actorCanAssign = (bool) ($orderUiListPayload['actor']['can_assign'] ?? false);
     $actorCanCreate = (bool) ($orderUiListPayload['actor']['can_create'] ?? false);
 @endphp
 
 <div class="main-content-container overflow-hidden orders-list-prototype" id="orderUiListWorkspace"
-    data-workspace="{{ $isCallCenterList ? 'call-center' : 'archived' }}"
-    data-archive="{{ $archiveKey }}"
-    data-live="{{ $isCallCenterList ? '1' : '0' }}">
+    data-workspace="call-center"
+    data-live="1">
     @include('pages.orders.partials.ui-page-header', [
         'orderUiPageTitle' => $listTitle,
         'orderUiPageCopy' => $listCopy,
-        'orderUiCrumbs' => $isCallCenterList
-            ? [['label' => 'Call Center Orders']]
-            : [
-                ['label' => 'Archived Orders'],
-                ['label' => ucfirst($archiveKey)],
-            ],
-        'orderUiPrimaryHref' => ($isCallCenterList && $actorCanCreate) ? $orderUiUrls['create'] : null,
-        'orderUiPrimaryLabel' => ($isCallCenterList && $actorCanCreate) ? 'Create Order' : null,
+        'orderUiCrumbs' => [['label' => 'Call Center Orders']],
+        'orderUiPrimaryHref' => $actorCanCreate ? $orderUiUrls['create'] : null,
+        'orderUiPrimaryLabel' => $actorCanCreate ? 'Create Order' : null,
         'orderUiSecondaryHref' => $orderUiUrls['ongoing'],
         'orderUiSecondaryLabel' => 'Ongoing Orders',
     ])
 
-    @unless ($isCallCenterList)
-        <div class="order-ui-banner">
-            <strong>UI architecture preview</strong>
-            Counts, filters, and rows below use isolated example data. Opening View uses the existing single-order visual with a preview state — no new backend queries.
-        </div>
-    @endunless
-
     <div id="orderUiListToast" class="alert alert-success prototype-toast hidden" role="status"></div>
 
-    @if ($isCallCenterList)
-        <div id="orderUiPoolLockBanner" class="pool-lock-banner hidden" role="status"></div>
-    @endif
+    <div id="orderUiPoolLockBanner" class="pool-lock-banner hidden" role="status"></div>
 
     <div class="workspace-tabs" id="orderUiWorkspaceTabs" role="tablist"></div>
 
@@ -102,7 +64,7 @@
                     <input type="search" id="orderUiSearchInput" class="form-control"
                         placeholder="Search orders by number, customer, phone, CCA..."
                         autocomplete="off"
-                        value="{{ $isCallCenterList ? ($orderUiListPayload['filters']['search'] ?? '') : '' }}">
+                        value="{{ $orderUiListPayload['filters']['search'] ?? '' }}">
                 </div>
                 <button type="button" class="btn btn-primary text-white" id="orderUiSearchBtn">Search</button>
                 <button type="button" class="btn btn-light border" id="orderUiClearBtn">Clear</button>
@@ -110,51 +72,49 @@
 
             <div class="filter-chip-row" id="orderUiStatusChips" aria-label="Status filters"></div>
 
-            @if ($isCallCenterList)
-                <div class="advanced-filters" id="orderUiAdvancedFilters" aria-label="Call center filters">
-                    <div>
-                        <label class="label" for="orderUiFilterCca">CCA</label>
-                        <select id="orderUiFilterCca" class="form-select form-control">
-                            <option value="all">All CCAs</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="label" for="orderUiFilterSupplier">Supplier</label>
-                        <select id="orderUiFilterSupplier" class="form-select form-control">
-                            <option value="all">All suppliers</option>
-                        </select>
-                    </div>
-                    <div class="order-ui-autocomplete">
-                        <label class="label" for="orderUiFilterProduct">Product</label>
-                        <input type="hidden" id="orderUiFilterProductId"
-                            value="{{ $orderUiListPayload['filters']['product_id'] ?? '' }}">
-                        <input type="search" id="orderUiFilterProduct" class="form-control"
-                            placeholder="Search products by name..."
-                            autocomplete="off"
-                            role="combobox"
-                            aria-autocomplete="list"
-                            aria-expanded="false"
-                            aria-controls="orderUiProductSuggestions"
-                            value="{{ $orderUiListPayload['selected_product']['name'] ?? '' }}">
-                        <ul id="orderUiProductSuggestions" class="order-ui-autocomplete-list hidden" role="listbox"></ul>
-                    </div>
-                    <div>
-                        <label class="label" for="orderUiFilterDateFrom">Date from</label>
-                        <input type="date" id="orderUiFilterDateFrom" class="form-control">
-                    </div>
-                    <div>
-                        <label class="label" for="orderUiFilterDateTo">Date to</label>
-                        <input type="date" id="orderUiFilterDateTo" class="form-control">
-                    </div>
-                    <div class="d-flex align-items-end">
-                        <button type="button" class="btn btn-light border w-100" id="orderUiResetFiltersBtn">Reset filters</button>
-                    </div>
+            <div class="advanced-filters" id="orderUiAdvancedFilters" aria-label="Call center filters">
+                <div>
+                    <label class="label" for="orderUiFilterCca">CCA</label>
+                    <select id="orderUiFilterCca" class="form-select form-control">
+                        <option value="all">All CCAs</option>
+                    </select>
                 </div>
-            @endif
+                <div>
+                    <label class="label" for="orderUiFilterSupplier">Supplier</label>
+                    <select id="orderUiFilterSupplier" class="form-select form-control">
+                        <option value="all">All suppliers</option>
+                    </select>
+                </div>
+                <div class="order-ui-autocomplete">
+                    <label class="label" for="orderUiFilterProduct">Product</label>
+                    <input type="hidden" id="orderUiFilterProductId"
+                        value="{{ $orderUiListPayload['filters']['product_id'] ?? '' }}">
+                    <input type="search" id="orderUiFilterProduct" class="form-control"
+                        placeholder="Search products by name..."
+                        autocomplete="off"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded="false"
+                        aria-controls="orderUiProductSuggestions"
+                        value="{{ $orderUiListPayload['selected_product']['name'] ?? '' }}">
+                    <ul id="orderUiProductSuggestions" class="order-ui-autocomplete-list hidden" role="listbox"></ul>
+                </div>
+                <div>
+                    <label class="label" for="orderUiFilterDateFrom">Date from</label>
+                    <input type="date" id="orderUiFilterDateFrom" class="form-control">
+                </div>
+                <div>
+                    <label class="label" for="orderUiFilterDateTo">Date to</label>
+                    <input type="date" id="orderUiFilterDateTo" class="form-control">
+                </div>
+                <div class="d-flex align-items-end">
+                    <button type="button" class="btn btn-light border w-100" id="orderUiResetFiltersBtn">Reset filters</button>
+                </div>
+            </div>
         </div>
     </div>
 
-    @if ($isCallCenterList && $actorCanAssign)
+    @if ($actorCanAssign)
         <div id="orderUiBulkToolbar" class="bulk-toolbar hidden">
             <div class="bulk-count"><span id="orderUiBulkSelectedCount">0</span> orders selected</div>
             <div class="bulk-actions">
@@ -171,15 +131,13 @@
                 <h4 class="fs-18 mb-0" id="orderUiWorkspaceTitle">{{ $listTitle }}</h4>
                 <div class="results-meta mt-1" id="orderUiResultsMeta"></div>
             </div>
-            @if ($isCallCenterList)
-                <div class="results-meta" id="orderUiUserContextMeta"></div>
-            @endif
+            <div class="results-meta" id="orderUiUserContextMeta"></div>
         </div>
         <div class="p-20" id="orderUiWorkspaceContent"></div>
     </div>
 </div>
 
-@if ($isCallCenterList && $actorCanAssign)
+@if ($actorCanAssign)
     <div id="orderUiBulkAssignModal" class="orders-proto-modal modal-backdrop-proto hidden" role="dialog" aria-modal="true" aria-labelledby="orderUiBulkAssignModalTitle">
         <div class="modal-panel-proto">
             <div class="modal-head">

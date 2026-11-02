@@ -22,6 +22,7 @@ use App\Services\Order\ResellerOrderAssignmentService;
 use App\Services\Order\ResellerOrderCatalogService;
 use App\Services\Order\ResellerOrderListService;
 use App\Services\Order\ResellerOrderWorkflowService;
+use App\Services\Order\ResellerOrderWorkspaceService;
 use App\Services\Order\ResellerShipmentWorkflowService;
 use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Exceptions\CourierProviderBookingException;
@@ -43,6 +44,7 @@ class OrderController extends Controller
 {
     public function __construct(
         private readonly ResellerOrderListService $orderListService,
+        private readonly ResellerOrderWorkspaceService $orderWorkspaceService,
         private readonly ResellerOrderCatalogService $orderCatalogService,
         private readonly ResellerManualOrderService $manualOrderService,
         private readonly ResellerOrderWorkflowService $orderWorkflowService,
@@ -60,11 +62,24 @@ class OrderController extends Controller
             abort(403, 'Call center agents cannot import orders.');
         }
 
-        $bootstrap = $this->orderListService->bootstrap($actor, $request);
-
         if ($request->wantsJson() || $request->boolean('json')) {
-            return response()->json(['data' => $bootstrap]);
+            return response()->json([
+                'data' => $this->orderListService->bootstrap($actor, $request),
+            ]);
         }
+
+        if ($this->rendersFulfillmentWorkspace($request)) {
+            return view('pages.orders.index', [
+                'bootstrap' => [],
+                'importAssignment' => null,
+                'workspaceOrders' => $this->orderWorkspaceService->payload(
+                    $actor,
+                    (string) $request->query('workspace', ''),
+                ),
+            ]);
+        }
+
+        $bootstrap = $this->orderListService->bootstrap($actor, $request);
 
         $importAssignment = null;
         if ($request->query('workspace') === 'import') {
@@ -85,7 +100,21 @@ class OrderController extends Controller
         return view('pages.orders.index', [
             'bootstrap' => $bootstrap,
             'importAssignment' => $importAssignment,
+            'workspaceOrders' => null,
         ]);
+    }
+
+    /**
+     * Ongoing, Completed (workspace=archived), and Archived Orders HTML.
+     * Call Center, New, and Import keep the existing list bootstrap.
+     */
+    private function rendersFulfillmentWorkspace(IndexOrderRequest $request): bool
+    {
+        $workspace = trim((string) $request->query('workspace', ''));
+
+        return $workspace === ''
+            || $workspace === 'archived'
+            || $workspace === 'archived-orders';
     }
 
     public function create(): View
@@ -177,6 +206,7 @@ class OrderController extends Controller
     public function store(StoreManualOrderRequest $request): RedirectResponse|JsonResponse
     {
         $actor = Auth::user();
+        $wantsBankTransfer = $request->wantsBankTransfer();
 
         try {
             $order = $this->manualOrderService->create($actor, $request->orderPayload());
@@ -191,7 +221,7 @@ class OrderController extends Controller
 
             return redirect()
                 ->route('orders.create')
-                ->withInput($request->except(['duplicate_warning_overridden']))
+                ->withInput($request->except(['duplicate_warning_overridden', 'payment_slip']))
                 ->withErrors($e->errors())
                 ->with('duplicate_orders', $this->manualOrderService->serializeDuplicates($e))
                 ->with('warning', 'Potential duplicate orders were found. Review them and confirm Continue to create this order.');
@@ -207,8 +237,65 @@ class OrderController extends Controller
 
             return redirect()
                 ->to($redirectTo)
-                ->withInput($request->all())
+                ->withInput($request->except(['payment_slip']))
                 ->withErrors($e->errors());
+        }
+
+        if ($wantsBankTransfer) {
+            try {
+                $this->orderWorkflowService->submitBankTransfer(
+                    $actor,
+                    $order,
+                    $request->file('payment_slip'),
+                    (string) $request->validated('reference_number'),
+                    $request->validated('amount'),
+                    (string) $request->validated('description'),
+                );
+            } catch (ValidationException $e) {
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'message' => 'Order created but bank transfer submission failed.',
+                        'errors' => $e->errors(),
+                        'data' => [
+                            'uuid' => (string) $order->uuid,
+                            'order_number' => (string) $order->order_number,
+                            'show_url' => route('orders.show', $order),
+                        ],
+                    ], 422);
+                }
+
+                return redirect()
+                    ->route('orders.show', $order)
+                    ->withInput($request->except(['payment_slip']))
+                    ->withErrors($e->errors())
+                    ->with(
+                        'warning',
+                        'Order '.$order->order_number.' was created, but the bank transfer was not submitted. Submit payment proof from the order page.'
+                    );
+            }
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order '.$order->order_number.' created and bank transfer submitted for approval.',
+                    'data' => [
+                        'uuid' => (string) $order->uuid,
+                        'order_number' => (string) $order->order_number,
+                        'status' => $order->fresh()->status instanceof \BackedEnum
+                            ? $order->fresh()->status->value
+                            : (string) $order->fresh()->status,
+                        'show_url' => route('orders.show', $order),
+                        'book_url' => route('orders.shipment.book', $order),
+                    ],
+                ]);
+            }
+
+            return redirect()
+                ->route('orders.show', $order)
+                ->with(
+                    'success',
+                    'Order '.$order->order_number.' created. Bank transfer submitted for approval. The order is now Pending Approval.'
+                );
         }
 
         if ($request->wantsJson()) {

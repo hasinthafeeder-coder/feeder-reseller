@@ -2,11 +2,11 @@
 
 namespace App\Services\Product;
 
-use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Enums\SupplierType;
 use Feeder\Core\Models\Product;
 use Feeder\Core\Models\ProductCategory;
 use Feeder\Core\Models\User;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Services\ResellerSupplierAssignmentService;
 use Feeder\Core\Services\StockService;
 use Feeder\Core\Support\ProductCategoryTree;
@@ -22,6 +22,7 @@ class ResellerProductListService
     public function __construct(
         private readonly ResellerSupplierAssignmentService $assignmentService,
         private readonly StockService $stockService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     public function paginate(User $reseller, Request $request): LengthAwarePaginator
@@ -142,10 +143,8 @@ class ResellerProductListService
     {
         $allowedMarketIds = $this->allowedMarketIds($reseller);
 
-        return Product::query()
-            ->forReseller($reseller->id)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true)
+        return $this->productEligibilityService
+            ->scopeSellable(Product::query()->forReseller($reseller->id))
             ->when(
                 $allowedMarketIds !== [],
                 fn (Builder $query) => $query->whereIn('market_id', $allowedMarketIds),

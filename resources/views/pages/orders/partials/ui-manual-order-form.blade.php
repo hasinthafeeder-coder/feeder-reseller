@@ -9,7 +9,7 @@
         ? ($catalogRoutes['update'] ?? '#')
         : ($catalogRoutes['store'] ?? '#'));
 @endphp
-        <form method="POST" action="{{ $formAction }}" id="manualOrderForm" data-order-form-mode="{{ $orderFormMode }}" novalidate>
+        <form method="POST" action="{{ $formAction }}" id="manualOrderForm" data-order-form-mode="{{ $orderFormMode }}" enctype="multipart/form-data" novalidate>
             @csrf
             <input type="hidden" name="intent" id="orderIntent" value="">
             <input type="hidden" name="assignment_target" id="assignmentTarget" value="">
@@ -17,6 +17,9 @@
             <input type="hidden" name="duplicate_warning_overridden" id="duplicateWarningOverridden" value="0">
             <input type="hidden" name="after_hours_warning_shown" id="afterHoursWarningShown" value="0">
             <input type="hidden" name="supplier_id" id="supplierId" value="{{ $fd('supplier_id', '') }}">
+            @unless ($isEditMode)
+                <input type="hidden" name="payment_method" id="createPaymentMethod" value="{{ old('payment_method', 'COD') }}">
+            @endunless
             <div class="row g-4">
                 <div class="col-lg-8">
                     {{-- Customer Information --}}
@@ -209,25 +212,72 @@
                                 'fieldIdPrefix' => 'editCca',
                             ])
                         @else
+                            @php
+                                $createPaymentMethod = old('payment_method', 'COD');
+                                $createIsBank = $createPaymentMethod === 'BANK_TRANSFER' || $createPaymentMethod === 'bank';
+                            @endphp
                             <div class="card bg-white rounded-10 border border-white mt-3" data-section="payment">
                                 <div class="p-20 border-bottom">
                                     <h4 class="fs-18 mb-0">Payment</h4>
                                 </div>
                                 <div class="p-20">
                                     <div class="form-check mb-2">
-                                        <input class="form-check-input" type="radio" name="ui_payment_preview" id="payCod" value="cod" checked data-create-payment-method>
+                                        <input class="form-check-input" type="radio" name="ui_payment_preview" id="payCod" value="cod"
+                                            @checked(! $createIsBank)
+                                            data-create-payment-method>
                                         <label class="form-check-label fs-14" for="payCod">Cash on delivery</label>
                                     </div>
                                     <div class="form-check mb-2">
-                                        <input class="form-check-input" type="radio" name="ui_payment_preview" id="payBank" value="bank" data-create-payment-method>
+                                        <input class="form-check-input" type="radio" name="ui_payment_preview" id="payBank" value="bank"
+                                            @checked($createIsBank)
+                                            data-create-payment-method>
                                         <label class="form-check-label fs-14" for="payBank">Bank transfer</label>
                                     </div>
-                                    <div id="createBankTransferHint" class="order-payment-bank-fields hidden">
-                                        <p class="fs-13 text-body mb-0">
-                                            After the order is created, open the order and submit the payment slip, reference number, amount, and description for admin review.
+                                    <div id="createBankTransferFields" class="order-payment-bank-fields {{ $createIsBank ? '' : 'hidden' }}">
+                                        <p class="fs-13 text-body mb-3">
+                                            Courier must be selected. Request Approval creates the order as Pending and submits payment proof for admin review. The order is not confirmed or booked until approval.
                                         </p>
+                                        <div class="mb-3">
+                                            <label class="label fs-14 mb-2" for="createBankTransferSlip">Payment proof</label>
+                                            <input type="file" class="form-control @error('payment_slip') is-invalid @enderror"
+                                                id="createBankTransferSlip" name="payment_slip"
+                                                accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf">
+                                            @error('payment_slip')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                            <div class="fs-12 text-body mt-1">PDF, JPG, PNG, or WEBP. Max 10 MB.</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="label fs-14 mb-2" for="createBankTransferReference">Reference number</label>
+                                            <input type="text" class="form-control @error('reference_number') is-invalid @enderror"
+                                                id="createBankTransferReference" name="reference_number"
+                                                value="{{ old('reference_number') }}" maxlength="100">
+                                            @error('reference_number')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="label fs-14 mb-2" for="createBankTransferAmount">Amount</label>
+                                            <input type="number" step="0.01" min="0.01"
+                                                class="form-control @error('amount') is-invalid @enderror"
+                                                id="createBankTransferAmount" name="amount"
+                                                value="{{ old('amount') }}">
+                                            @error('amount')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                            <div class="fs-12 text-body mt-1">Defaults to the live customer payable preview in the order market currency.</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="label fs-14 mb-2" for="createBankTransferDescription">Description</label>
+                                            <textarea class="form-control @error('description') is-invalid @enderror"
+                                                id="createBankTransferDescription" name="description" rows="3" maxlength="2000"
+                                                placeholder="Transfer details for admin review">{{ old('description') }}</textarea>
+                                            @error('description')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
                                     </div>
-                                    <p class="fs-13 text-body mb-0 mt-3" id="createCodPaymentHint">
+                                    <p class="fs-13 text-body mb-0 mt-3 {{ $createIsBank ? 'hidden' : '' }}" id="createCodPaymentHint">
                                         COD is the default payment method for new orders.
                                     </p>
                                 </div>
@@ -321,6 +371,8 @@
             </div>
         </div>
     </div>
+    @include('pages.orders.partials.ui-bank-transfer-confirm-modal')
+    @include('pages.orders.partials.ui-duplicate-confirm-modal')
     @endunless
 
     @include('pages.orders.partials.ui-ban-modal', [

@@ -2,7 +2,6 @@
 
 namespace App\Services\Order;
 
-use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Exceptions\ConflictingCustomerIdentityException;
 use Feeder\Core\Models\Country;
 use Feeder\Core\Models\Customer;
@@ -18,6 +17,7 @@ use Feeder\Core\Services\Order\CustomerBanService;
 use Feeder\Core\Services\Order\CustomerIdentityService;
 use Feeder\Core\Services\Order\OrderCourierLookupService;
 use Feeder\Core\Services\Order\OrderService;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Services\ResellerMarketAccessService;
 use Feeder\Core\Services\ResellerSupplierAssignmentService;
 use Feeder\Core\Support\CurrencyDisplay;
@@ -45,6 +45,7 @@ class ResellerOrderCatalogService
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly OrderService $orderService,
         private readonly OrderCourierLookupService $courierLookupService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     /**
@@ -92,11 +93,12 @@ class ResellerOrderCatalogService
             return collect();
         }
 
-        $supplierIdsWithProducts = Product::query()
-            ->whereIn('supplier_id', $assignedIds)
-            ->where('market_id', $marketId)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true)
+        $supplierIdsWithProducts = $this->productEligibilityService
+            ->scopeSellable(
+                Product::query()
+                    ->whereIn('supplier_id', $assignedIds)
+                    ->where('market_id', $marketId)
+            )
             ->distinct()
             ->pluck('supplier_id')
             ->map(fn ($id) => (int) $id)
@@ -130,11 +132,12 @@ class ResellerOrderCatalogService
         $this->assertMarketAccess($actor, $marketId);
         $this->assertSupplierAssigned($actor, $supplierId);
 
-        $query = Product::query()
-            ->where('supplier_id', $supplierId)
-            ->where('market_id', $marketId)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true)
+        $query = $this->productEligibilityService
+            ->scopeSellable(
+                Product::query()
+                    ->where('supplier_id', $supplierId)
+                    ->where('market_id', $marketId)
+            )
             ->withCount(['variants' => fn ($q) => $q->where('is_active', true)])
             ->orderBy('name');
 
@@ -184,12 +187,13 @@ class ResellerOrderCatalogService
         $this->assertMarketAccess($actor, $marketId);
         $this->assertSupplierAssigned($actor, $supplierId);
 
-        $product = Product::query()
-            ->whereKey($productId)
-            ->where('supplier_id', $supplierId)
-            ->where('market_id', $marketId)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true)
+        $product = $this->productEligibilityService
+            ->scopeSellable(
+                Product::query()
+                    ->whereKey($productId)
+                    ->where('supplier_id', $supplierId)
+                    ->where('market_id', $marketId)
+            )
             ->first();
 
         if ($product === null) {
@@ -235,7 +239,15 @@ class ResellerOrderCatalogService
     }
 
     /**
-     * @return array{after_hours: bool, after_hours_penalty_amount: float, timezone: string, local_time: string, currency_code: string}
+     * @return array{
+     *     after_hours: bool,
+     *     after_hours_penalty_amount: float,
+     *     timezone: string,
+     *     local_time: string,
+     *     operating_start: string,
+     *     operating_end: string,
+     *     currency_code: string
+     * }
      */
     public function afterHoursForMarket(User $actor, int $marketId): array
     {

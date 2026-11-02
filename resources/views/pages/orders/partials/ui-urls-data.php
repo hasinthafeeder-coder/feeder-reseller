@@ -13,10 +13,9 @@ return [
         'import' => route('orders.index', ['workspace' => 'import']),
         'call_center' => route('orders.index', ['workspace' => 'call-center']),
         'ongoing' => route('orders.index'),
-        'archived' => route('orders.index', ['workspace' => 'archived', 'archive' => 'completed']),
-        'archived_completed' => route('orders.index', ['workspace' => 'archived', 'archive' => 'completed']),
-        'archived_returned' => route('orders.index', ['workspace' => 'archived', 'archive' => 'returned']),
-        'archived_expired' => route('orders.index', ['workspace' => 'archived', 'archive' => 'expired']),
+        // workspace=archived kept for URL compatibility; UI label is Completed Orders.
+        'completed' => route('orders.index', ['workspace' => 'archived']),
+        'archived' => route('orders.index', ['workspace' => 'archived-orders']),
         'confirm' => route('orders.create', ['ui_screen' => 'confirm']),
         'hold' => route('orders.create', ['ui_screen' => 'hold']),
         'expiring' => route('orders.create', ['ui_screen' => 'expiring']),
@@ -30,5 +29,7 @@ return [
     'orderUiScreen' => (app()->environment('local') && (bool) config('app.debug'))
         ? request('ui_screen')
         : null,
-    'orderUiIsArchitectureList' => in_array(request('workspace'), ['new', 'import', 'call-center', 'archived'], true),
+    'orderUiIsArchitectureList' => in_array(request('workspace'), ['new', 'import', 'call-center'], true),
+    'orderUiIsCompletedList' => request('workspace') === 'archived',
+    'orderUiIsArchivedList' => request('workspace') === 'archived-orders',
 ];

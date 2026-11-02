@@ -251,7 +251,11 @@ class TestOrderImportGeneratorService
                 $query->whereIn('supplier_id', $supplierIds)
                     ->whereIn('market_id', $marketIds)
                     ->where('status', ProductStatus::ACTIVE)
-                    ->where('system_visible', true);
+                    ->where('system_visible', true)
+                    ->where(function ($approvalQuery): void {
+                        $approvalQuery->where('approval_status', 'APPROVED')
+                            ->orWhereNull('approval_status');
+                    });
             })
             ->with([
                 'product.market.country',

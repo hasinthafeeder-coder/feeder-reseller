@@ -61,11 +61,18 @@ class ResellerOrderListTest extends TestCase
         $orderA = $this->makeOrder($resellerA, $supplier, $variant, ['order_number' => 'ORD-A-UNIQUE']);
         $orderB = $this->makeOrder($resellerB, $supplier, $variant, ['order_number' => 'ORD-B-UNIQUE']);
 
+        // JSON bootstrap stays company-scoped. Ongoing HTML only includes fulfillment statuses.
+        $this->actingAs($resellerA)
+            ->getJson(route('orders.index', ['json' => 1]))
+            ->assertOk()
+            ->assertJsonFragment(['orderNumber' => 'ORD-A-UNIQUE'])
+            ->assertJsonMissing(['orderNumber' => 'ORD-B-UNIQUE']);
+
         $this->actingAs($resellerA)
             ->get(route('orders.index'))
             ->assertOk()
-            ->assertSee('ORD-A-UNIQUE')
-            ->assertDontSee('ORD-B-UNIQUE');
+            ->assertSee('id="resellerOngoingOrdersPage"', false)
+            ->assertSee('Track orders currently moving through fulfillment and dispatch.');
 
         $this->actingAs($resellerA)
             ->get(route('orders.show', $orderB))
@@ -102,21 +109,24 @@ class ResellerOrderListTest extends TestCase
             'status' => OrderStatus::HOLD,
         ]);
 
+        // Status filters on the JSON list bootstrap. Ongoing HTML is limited to fulfillment statuses.
         $this->actingAs($reseller)
-            ->get(route('orders.index', [
+            ->getJson(route('orders.index', [
                 'status' => OrderStatus::HOLD->value,
+                'json' => 1,
             ]))
             ->assertOk()
-            ->assertSee('ORD-HOLD-1')
-            ->assertDontSee('ORD-PENDING-1');
+            ->assertJsonFragment(['orderNumber' => 'ORD-HOLD-1'])
+            ->assertJsonMissing(['orderNumber' => 'ORD-PENDING-1']);
 
         $this->actingAs($reseller)
-            ->get(route('orders.index', [
+            ->getJson(route('orders.index', [
                 'order_number' => 'PENDING-1',
+                'json' => 1,
             ]))
             ->assertOk()
-            ->assertSee('ORD-PENDING-1')
-            ->assertDontSee('ORD-HOLD-1');
+            ->assertJsonFragment(['orderNumber' => 'ORD-PENDING-1'])
+            ->assertJsonMissing(['orderNumber' => 'ORD-HOLD-1']);
     }
 
     /**

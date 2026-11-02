@@ -2,6 +2,7 @@
 
 namespace App\Services\Order;
 use Feeder\Core\Enums\OrderCcaAssignmentOrigin;
+use Feeder\Core\Enums\OrderPaymentMethod;
 use Feeder\Core\Enums\OrderSource;
 use Feeder\Core\Enums\OrderStatus;
 use Feeder\Core\Enums\OrderType;
@@ -17,6 +18,7 @@ use Feeder\Core\Services\Order\OrderCcaAssignmentService;
 use Feeder\Core\Services\Order\OrderCourierLookupService;
 use Feeder\Core\Services\Order\OrderService;
 use Feeder\Core\Services\Order\OrderStatusService;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Support\ResellerProductPricing;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -51,6 +53,7 @@ class ResellerManualOrderService
         private readonly OrderCourierLookupService $courierLookupService,
         private readonly DraftOrderCourierBookingService $draftCourierBookingService,
         private readonly OrderStatusService $orderStatusService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     /**
@@ -74,6 +77,7 @@ class ResellerManualOrderService
      *     courier_fee_amount?: float|string|null,
      *     duplicate_warning_overridden?: bool,
      *     after_hours_warning_shown?: bool,
+     *     payment_method?: string,
      *     intent?: string,
      *     assignment_target?: string,
      *     assign_cca_id?: int|null
@@ -81,6 +85,9 @@ class ResellerManualOrderService
      *
      * courier_fee_amount is applied only when no courier is selected (import / fee-only drafts).
      * When a courier is selected, the authoritative fee preview still wins.
+     *
+     * Bank-transfer creates stay PENDING with a draft courier. Confirmation and booking
+     * happen only after admin approval via OrderPaymentReviewService.
      */
 
     public function create(User $actor, array $input): Order
@@ -103,7 +110,14 @@ class ResellerManualOrderService
         if ($secondaryPhone === '') {
             $secondaryPhone = null;
         }
+        $paymentMethod = OrderPaymentMethod::tryFrom((string) ($input['payment_method'] ?? OrderPaymentMethod::COD->value))
+            ?? OrderPaymentMethod::COD;
+        $isBankTransfer = $paymentMethod === OrderPaymentMethod::BANK_TRANSFER;
         $intent = (string) ($input['intent'] ?? self::INTENT_SEND_TO_CALL_CENTER);
+        if ($isBankTransfer) {
+            // Never COD-confirm / book while requesting bank-transfer approval.
+            $intent = self::INTENT_SEND_TO_CALL_CENTER;
+        }
         if (! in_array($intent, [self::INTENT_CONFIRM, self::INTENT_SEND_TO_CALL_CENTER], true)) {
             throw ValidationException::withMessages([
                 'intent' => ['Invalid order creation intent.'],
@@ -121,7 +135,7 @@ class ResellerManualOrderService
             districtName: $districtName,
             cityName: $cityName !== '' ? $cityName : null,
         );
-        if ($intent === self::INTENT_CONFIRM) {
+        if ($intent === self::INTENT_CONFIRM || $isBankTransfer) {
             $this->assertConfirmCourierDraftReady($draft);
         }
         if ($draft['city_name'] !== null && $cityName === '') {
@@ -661,6 +675,11 @@ class ResellerManualOrderService
                     "items.{$index}.product_variant_id" => ['The selected product variant is invalid.'],
                 ]);
             }
+
+            $this->productEligibilityService->assertVariantSellable(
+                $variant,
+                "items.{$index}.product_variant_id"
+            );
 
             $priceLocked = (bool) $variant->product->price_locked;
             $selected = array_key_exists('selected_selling_price', $item)

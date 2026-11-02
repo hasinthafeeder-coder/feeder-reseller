@@ -10,13 +10,20 @@
     "license": "MIT",
     "repositories": [
         {
+            "type": "path",
+            "url": "../feeder-core",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
             "type": "vcs",
             "url": "https://github.com/hasinthafeeder-coder/feeder-core.git"
         }
     ],
     "require": {
         "php": "^8.3",
-        "feeder/core": "dev-main#8cb28c68461ab2f8a01225bd4efd485b01573804",
+        "feeder/core": "dev-main",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0"
     },

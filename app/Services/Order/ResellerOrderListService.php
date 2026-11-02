@@ -8,12 +8,12 @@ use Feeder\Core\Enums\OrderPaymentMethod;
 use Feeder\Core\Enums\OrderPaymentReviewStatus;
 use Feeder\Core\Enums\OrderSource;
 use Feeder\Core\Enums\OrderStatus;
-use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Models\Order;
 use Feeder\Core\Models\Product;
 use Feeder\Core\Models\User;
 use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Feeder\Core\Services\Order\OrderCcaAssignmentService;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Services\ResellerSupplierAssignmentService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,6 +30,7 @@ class ResellerOrderListService
         private readonly ResellerSupplierAssignmentService $supplierAssignmentService,
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly OrderCcaAssignmentService $ccaAssignmentService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     public function paginate(User $actor, Request $request): LengthAwarePaginator
@@ -748,11 +749,11 @@ class ResellerOrderListService
             return Product::query()->whereRaw('1 = 0');
         }
 
-        return Product::query()
-            ->whereIn('supplier_id', $assignedSupplierIds)
-            ->whereIn('market_id', $allowedMarketIds)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true);
+        return $this->productEligibilityService->scopeSellable(
+            Product::query()
+                ->whereIn('supplier_id', $assignedSupplierIds)
+                ->whereIn('market_id', $allowedMarketIds)
+        );
     }
 
     /**

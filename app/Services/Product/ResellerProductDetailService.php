@@ -2,11 +2,11 @@
 
 namespace App\Services\Product;
 
-use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Models\Currency;
 use Feeder\Core\Models\Product;
 use Feeder\Core\Models\ProductVariant;
 use Feeder\Core\Models\User;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Services\ProductMarketLanguageService;
 use Feeder\Core\Services\StockService;
 use Feeder\Core\Support\CurrencyDisplay;
@@ -18,6 +18,7 @@ class ResellerProductDetailService
     public function __construct(
         private readonly StockService $stockService,
         private readonly ProductMarketLanguageService $productLanguageService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     public function findAccessibleProduct(User $reseller, Product $product): Product
@@ -116,10 +117,8 @@ class ResellerProductDetailService
     {
         $allowedMarketIds = $this->allowedMarketIds($reseller);
 
-        return Product::query()
-            ->forReseller($reseller->id)
-            ->where('status', ProductStatus::ACTIVE)
-            ->where('system_visible', true)
+        return $this->productEligibilityService
+            ->scopeSellable(Product::query()->forReseller($reseller->id))
             ->when(
                 $allowedMarketIds !== [],
                 fn (Builder $query) => $query->whereIn('market_id', $allowedMarketIds),

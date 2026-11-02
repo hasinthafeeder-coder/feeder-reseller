@@ -12,11 +12,15 @@
     $orderUiCanImport = $orderUiCanCreate && ! $orderUiIsCca;
 
     $orderUiIsCreate = request()->routeIs('orders.create') && ! request()->filled('ui_screen');
-    $orderUiIsOngoing = request()->routeIs('orders.index') && ! $orderUiIsArchitectureList;
+    $orderUiIsCompleted = ($orderUiIsCompletedList ?? false) || $orderUiWorkspace === 'archived';
+    $orderUiIsArchived = ($orderUiIsArchivedList ?? false) || $orderUiWorkspace === 'archived-orders';
+    $orderUiIsOngoing = request()->routeIs('orders.index')
+        && ! $orderUiIsArchitectureList
+        && ! $orderUiIsCompleted
+        && ! $orderUiIsArchived;
     $orderUiIsCallCenter = $orderUiWorkspace === 'call-center';
     $orderUiIsImport = $orderUiWorkspace === 'import';
     $orderUiIsNew = $orderUiWorkspace === 'new';
-    $orderUiIsArchived = $orderUiWorkspace === 'archived';
 @endphp
 @if ($orderUiCanCreate || $orderUiCanImport)
 <li class="menu-item after-sub-menu {{ $orderUiIsNew || $orderUiIsCreate || $orderUiIsImport ? 'open' : '' }}">
@@ -56,8 +60,14 @@
     </a>
 </li>
 <li class="menu-item">
+    <a href="{{ $orderUiUrls['completed'] }}" class="menu-link {{ $orderUiIsCompleted ? 'active' : '' }}">
+        <span class="material-symbols-outlined menu-icon">task_alt</span>
+        <span class="title">Completed Orders</span>
+    </a>
+</li>
+<li class="menu-item">
     <a href="{{ $orderUiUrls['archived'] }}" class="menu-link {{ $orderUiIsArchived ? 'active' : '' }}">
-        <span class="material-symbols-outlined menu-icon">archive</span>
+        <span class="material-symbols-outlined menu-icon">inventory_2</span>
         <span class="title">Archived Orders</span>
     </a>
 </li>

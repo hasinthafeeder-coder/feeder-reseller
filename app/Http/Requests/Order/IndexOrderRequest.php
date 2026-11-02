@@ -43,7 +43,7 @@ class IndexOrderRequest extends FormRequest
             'workspace' => [
                 'nullable',
                 'string',
-                Rule::in(['new', 'import', 'call-center', 'archived']),
+                Rule::in(['new', 'import', 'call-center', 'archived', 'archived-orders']),
             ],
             'archive' => [
                 'nullable',

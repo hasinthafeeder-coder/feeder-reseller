@@ -136,12 +136,19 @@ class ResellerBankTransferUiTest extends TestCase
         $order = $this->makeReadyOrder($actor);
         $this->submitBankTransfer($actor, $order);
 
-        $index = $this->actingAs($actor)->get(route('orders.index'));
-        $index->assertOk()->assertSee('Pending Approval');
+        // Phase 2B Ongoing Orders HTML is fulfillment-scoped (PRINT→DISPATCHED only).
+        // Pending Approval remains available on the list bootstrap / JSON filter API.
+        $index = $this->actingAs($actor)
+            ->getJson(route('orders.index', ['json' => 1]))
+            ->assertOk();
 
-        $filtered = $this->actingAs($actor)
-            ->get(route('orders.index', ['status' => 'PENDING_APPROVAL']));
-        $filtered->assertOk()->assertSee($order->order_number);
+        $statusLabels = collect($index->json('data.statuses'))->pluck('label');
+        $this->assertTrue($statusLabels->contains('Pending Approval'));
+
+        $this->actingAs($actor)
+            ->getJson(route('orders.index', ['status' => 'PENDING_APPROVAL', 'json' => 1]))
+            ->assertOk()
+            ->assertJsonFragment(['orderNumber' => $order->order_number]);
     }
 
     public function test_pending_approval_blocks_status_cancel_and_second_submission(): void

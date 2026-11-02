@@ -4,7 +4,6 @@ namespace App\Services\Order;
 
 use Feeder\Core\Enums\OrderImportBatchStatus;
 use Feeder\Core\Enums\OrderImportRowStatus;
-use Feeder\Core\Enums\ProductStatus;
 use Feeder\Core\Exceptions\ConflictingCustomerIdentityException;
 use Feeder\Core\Exceptions\DuplicateOrderWarningException;
 use Feeder\Core\Models\Country;
@@ -16,6 +15,7 @@ use Feeder\Core\Services\Order\CallCenterAgentEligibilityService;
 use Feeder\Core\Services\Order\CustomerBanService;
 use Feeder\Core\Services\Order\CustomerIdentityService;
 use Feeder\Core\Services\Order\OrderImportFileParser;
+use Feeder\Core\Services\ProductEligibilityService;
 use Feeder\Core\Services\ResellerMarketAccessService;
 use Feeder\Core\Services\ResellerSupplierAssignmentService;
 use Feeder\Core\Services\StockService;
@@ -49,6 +49,7 @@ class ResellerOrderImportService
         private readonly ResellerSupplierAssignmentService $supplierAssignmentService,
         private readonly CallCenterAgentEligibilityService $ccaEligibilityService,
         private readonly StockService $stockService,
+        private readonly ProductEligibilityService $productEligibilityService,
     ) {}
 
     /**
@@ -439,14 +440,8 @@ class ResellerOrderImportService
             if ($variant === null || $variant->product === null) {
                 $errors[] = 'Product variant does not exist.';
                 $variant = null;
-            } elseif (! (bool) $variant->is_active) {
-                $errors[] = 'Product variant is inactive.';
-                $variant = null;
-            } elseif ($variant->product->status !== ProductStatus::ACTIVE) {
-                $errors[] = 'Product is not active.';
-                $variant = null;
-            } elseif (! (bool) $variant->product->system_visible) {
-                $errors[] = 'Product is not available for ordering.';
+            } elseif (($ineligibility = $this->productEligibilityService->variantIneligibilityReason($variant)) !== null) {
+                $errors[] = $ineligibility;
                 $variant = null;
             } else {
                 $marketId = (int) $variant->product->market_id;

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Order;
 
 use App\Services\Order\ResellerManualOrderService;
+use Feeder\Core\Enums\OrderPaymentMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,6 +34,15 @@ class StoreManualOrderRequest extends FormRequest
             ]);
         }
 
+        $paymentMethod = strtoupper(trim((string) $this->input('payment_method', OrderPaymentMethod::COD->value)));
+        if ($paymentMethod === 'BANK') {
+            $paymentMethod = OrderPaymentMethod::BANK_TRANSFER->value;
+        }
+        if ($paymentMethod === '') {
+            $paymentMethod = OrderPaymentMethod::COD->value;
+        }
+        $this->merge(['payment_method' => $paymentMethod]);
+
         // Never accept browser-trusted ownership, pricing, or CCA assignment.
         $this->request->remove('reseller_id');
         $this->request->remove('reseller_company_id');
@@ -45,6 +55,8 @@ class StoreManualOrderRequest extends FormRequest
 
     public function rules(): array
     {
+        $bank = OrderPaymentMethod::BANK_TRANSFER->value;
+
         return [
             'market_id' => ['required', 'integer'],
             'supplier_id' => ['required', 'integer'],
@@ -57,9 +69,19 @@ class StoreManualOrderRequest extends FormRequest
             'district_name' => ['nullable', 'string', 'max:120'],
             'postal_code' => ['nullable', 'string', 'max:40'],
             'full_address_text' => ['nullable', 'string', 'max:1000'],
-            'courier_id' => ['nullable', 'integer', 'min:1'],
+            'courier_id' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'required_if:payment_method,'.$bank,
+            ],
             'courier_service_id' => ['nullable', 'integer', 'min:1'],
-            'courier_city_id' => ['nullable', 'integer', 'min:1'],
+            'courier_city_id' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'required_if:payment_method,'.$bank,
+            ],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_variant_id' => ['required', 'integer'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:9999'],
@@ -67,6 +89,40 @@ class StoreManualOrderRequest extends FormRequest
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'duplicate_warning_overridden' => ['sometimes', 'boolean'],
             'after_hours_warning_shown' => ['sometimes', 'boolean'],
+            'payment_method' => [
+                'nullable',
+                'string',
+                Rule::in([
+                    OrderPaymentMethod::COD->value,
+                    OrderPaymentMethod::BANK_TRANSFER->value,
+                ]),
+            ],
+            'payment_slip' => [
+                'nullable',
+                'required_if:payment_method,'.$bank,
+                'file',
+                'mimes:jpg,jpeg,png,webp,pdf',
+                'max:10240',
+            ],
+            'reference_number' => [
+                'nullable',
+                'required_if:payment_method,'.$bank,
+                'string',
+                'max:100',
+            ],
+            'amount' => [
+                'nullable',
+                'required_if:payment_method,'.$bank,
+                'numeric',
+                'min:0.01',
+            ],
+            'description' => [
+                'nullable',
+                'required_if:payment_method,'.$bank,
+                'string',
+                'min:3',
+                'max:2000',
+            ],
             'intent' => [
                 'nullable',
                 'string',
@@ -92,6 +148,11 @@ class StoreManualOrderRequest extends FormRequest
         ];
     }
 
+    public function wantsBankTransfer(): bool
+    {
+        return (string) $this->input('payment_method') === OrderPaymentMethod::BANK_TRANSFER->value;
+    }
+
     /**
      * @return array{
      *     market_id: int,
@@ -112,6 +173,7 @@ class StoreManualOrderRequest extends FormRequest
      *     discount_amount: float,
      *     duplicate_warning_overridden: bool,
      *     after_hours_warning_shown: bool,
+     *     payment_method: string,
      *     intent: string,
      *     assignment_target: string,
      *     assign_cca_id: ?int
@@ -133,6 +195,14 @@ class StoreManualOrderRequest extends FormRequest
             }
 
             $items[] = $line;
+        }
+
+        $paymentMethod = (string) ($validated['payment_method'] ?? OrderPaymentMethod::COD->value);
+        $intent = (string) ($validated['intent'] ?? ResellerManualOrderService::INTENT_SEND_TO_CALL_CENTER);
+
+        // Bank transfer must stay PENDING for admin approval; never COD-confirm in the same create.
+        if ($paymentMethod === OrderPaymentMethod::BANK_TRANSFER->value) {
+            $intent = ResellerManualOrderService::INTENT_SEND_TO_CALL_CENTER;
         }
 
         return [
@@ -170,7 +240,8 @@ class StoreManualOrderRequest extends FormRequest
             'discount_amount' => round((float) ($validated['discount_amount'] ?? 0), 2),
             'duplicate_warning_overridden' => (bool) ($validated['duplicate_warning_overridden'] ?? false),
             'after_hours_warning_shown' => (bool) ($validated['after_hours_warning_shown'] ?? false),
-            'intent' => (string) ($validated['intent'] ?? ResellerManualOrderService::INTENT_SEND_TO_CALL_CENTER),
+            'payment_method' => $paymentMethod,
+            'intent' => $intent,
             'assignment_target' => (string) ($validated['assignment_target'] ?? ResellerManualOrderService::ASSIGNMENT_UNASSIGNED),
             'assign_cca_id' => isset($validated['assign_cca_id']) ? (int) $validated['assign_cca_id'] : null,
         ];

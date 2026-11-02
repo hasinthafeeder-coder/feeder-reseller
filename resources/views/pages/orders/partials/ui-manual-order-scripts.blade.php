@@ -68,10 +68,22 @@
     const modalAssignCcaSelect = document.getElementById('modalAssignCcaSelect');
     const closeCallCenterAssignModal = document.getElementById('closeCallCenterAssignModal');
     const confirmSendToCallCenterBtn = document.getElementById('confirmSendToCallCenterBtn');
+    const createPaymentMethodInput = document.getElementById('createPaymentMethod');
+    const createBankTransferFields = document.getElementById('createBankTransferFields');
+    const createBankTransferAmount = document.getElementById('createBankTransferAmount');
+    const createBankTransferSlip = document.getElementById('createBankTransferSlip');
+    const createBankTransferReference = document.getElementById('createBankTransferReference');
+    const createBankTransferDescription = document.getElementById('createBankTransferDescription');
+    const createBankTransferModal = document.getElementById('bankTransferConfirmModal');
+    const confirmBankTransferApprovalBtn = document.getElementById('confirmBankTransferApprovalBtn');
+    const duplicateOrderConfirmModal = document.getElementById('duplicateOrderConfirmModal');
+    const confirmDuplicateOrderContinueBtn = document.getElementById('confirmDuplicateOrderContinueBtn');
 
     let lineIndex = 0;
+    let pendingDuplicateContinue = null;
     let currencyCode = 'LKR';
     let courierFee = 0;
+    let liveCustomerPayable = 0;
     let selectedMarketId = marketIdInput.value || null;
     let marketSuppliers = [];
     let lockedSupplierId = supplierIdInput.value || null;
@@ -528,12 +540,134 @@
 
         const discount = Number(discountInput.value || 0);
         const payable = Math.max(0, subtotal - discount + courierFee);
+        liveCustomerPayable = payable;
 
         document.getElementById('itemsSubtotalLabel').textContent = money(subtotal);
         document.getElementById('courierFeeLabel').textContent = money(courierFee);
         document.getElementById('customerPayableLabel').textContent = money(payable);
         document.getElementById('totalWeightLabel').textContent = weight.toFixed(3) + ' kg';
+        syncCreateBankTransferAmount(false);
         updateOrderReview();
+    }
+
+    function isCreateBankTransferSelected() {
+        if (isEditMode) {
+            return false;
+        }
+        const bankRadio = document.getElementById('payBank');
+        return !!(bankRadio && bankRadio.checked);
+    }
+
+    function syncCreateBankTransferAmount(force) {
+        if (!createBankTransferAmount || isEditMode) {
+            return;
+        }
+        if (!isCreateBankTransferSelected()) {
+            return;
+        }
+        const current = String(createBankTransferAmount.value || '').trim();
+        if (!force && current !== '') {
+            return;
+        }
+        createBankTransferAmount.value = liveCustomerPayable > 0
+            ? liveCustomerPayable.toFixed(2)
+            : '';
+    }
+
+    function syncCreatePaymentMethodUi() {
+        if (isEditMode) {
+            return;
+        }
+
+        const isBank = isCreateBankTransferSelected();
+        if (createPaymentMethodInput) {
+            createPaymentMethodInput.value = isBank ? 'BANK_TRANSFER' : 'COD';
+        }
+        if (createBankTransferFields) {
+            createBankTransferFields.classList.toggle('hidden', !isBank);
+        }
+        const codHint = document.getElementById('createCodPaymentHint');
+        if (codHint) {
+            codHint.classList.toggle('hidden', isBank);
+        }
+        if (confirmOrderBtn) {
+            confirmOrderBtn.textContent = isBank ? 'Request Approval' : 'Confirm Order';
+        }
+        if (sendToCallCenterBtn) {
+            sendToCallCenterBtn.classList.toggle('hidden', isBank);
+        }
+        [createBankTransferSlip, createBankTransferReference, createBankTransferAmount, createBankTransferDescription]
+            .forEach((field) => {
+                if (!field) return;
+                if (isBank) {
+                    field.setAttribute('required', 'required');
+                } else {
+                    field.removeAttribute('required');
+                }
+            });
+        if (isBank) {
+            syncCreateBankTransferAmount(true);
+        }
+    }
+
+    function validateCreateBankTransferFields() {
+        if (!isCreateBankTransferSelected()) {
+            return true;
+        }
+
+        const courierId = courierSelect ? String(courierSelect.value || '') : '';
+        const district = courierDistrict ? String(courierDistrict.value || '') : '';
+        const cityId = courierCity ? String(courierCity.value || '') : '';
+
+        if (!courierId) {
+            window.alert('Please select a courier before requesting bank transfer approval.');
+            return false;
+        }
+        if (!district || !cityId) {
+            window.alert('Please select courier state/district and city before requesting bank transfer approval.');
+            return false;
+        }
+        if (createBankTransferSlip && typeof createBankTransferSlip.reportValidity === 'function') {
+            if (!createBankTransferSlip.reportValidity()
+                || !createBankTransferReference.reportValidity()
+                || !createBankTransferAmount.reportValidity()
+                || !createBankTransferDescription.reportValidity()
+            ) {
+                return false;
+            }
+        }
+        if (createBankTransferSlip && (!createBankTransferSlip.files || !createBankTransferSlip.files[0])) {
+            window.alert('Please upload payment proof before requesting approval.');
+            return false;
+        }
+        if (!String(createBankTransferReference?.value || '').trim()) {
+            window.alert('Please enter the bank transfer reference number.');
+            return false;
+        }
+        if (!(Number(createBankTransferAmount?.value || 0) > 0)) {
+            window.alert('Please enter a valid bank transfer amount.');
+            return false;
+        }
+        if (String(createBankTransferDescription?.value || '').trim().length < 3) {
+            window.alert('Please enter a payment description.');
+            return false;
+        }
+
+        return true;
+    }
+
+    function openCreateBankTransferModal() {
+        if (!createBankTransferModal) {
+            return;
+        }
+        createBankTransferModal.classList.remove('hidden');
+    }
+
+    function closeCreateBankTransferModal() {
+        if (!createBankTransferModal) {
+            return;
+        }
+        createBankTransferModal.classList.add('hidden');
     }
 
     async function searchProducts(query) {
@@ -1422,13 +1556,58 @@
         return !duplicatePanel.classList.contains('hidden');
     }
 
-    function prepareSubmit(intent, assignmentTarget, assignCcaId) {
+    function openDuplicateOrderConfirmModal(onContinue) {
+        pendingDuplicateContinue = typeof onContinue === 'function' ? onContinue : null;
+
+        if (callCenterAssignModal && !callCenterAssignModal.classList.contains('hidden')) {
+            closeCallCenterModal();
+        }
+
+        if (!duplicateOrderConfirmModal) {
+            return;
+        }
+
+        duplicateOrderConfirmModal.classList.remove('hidden');
+
+        window.setTimeout(() => {
+            if (confirmDuplicateOrderContinueBtn) {
+                confirmDuplicateOrderContinueBtn.focus();
+            }
+        }, 0);
+    }
+
+    function closeDuplicateOrderConfirmModal(clearPending) {
+        if (clearPending !== false) {
+            pendingDuplicateContinue = null;
+        }
+
+        if (!duplicateOrderConfirmModal) {
+            return;
+        }
+
+        duplicateOrderConfirmModal.classList.add('hidden');
+    }
+
+    function acceptDuplicateOrderConfirm() {
+        confirmDuplicateOverride.checked = true;
+        duplicateWarningOverriddenInput.value = '1';
+
+        const continueFn = pendingDuplicateContinue;
+        pendingDuplicateContinue = null;
+        closeDuplicateOrderConfirmModal(false);
+
+        if (typeof continueFn === 'function') {
+            continueFn();
+        }
+    }
+
+    function prepareSubmit(intent, assignmentTarget, assignCcaId, onDuplicateContinue) {
         orderIntentInput.value = intent;
         assignmentTargetInput.value = assignmentTarget || '';
         assignCcaIdInput.value = assignCcaId || '';
 
         if (duplicatePanelVisible() && !confirmDuplicateOverride.checked) {
-            window.alert('Please review the duplicate orders and confirm Continue before submitting.');
+            openDuplicateOrderConfirmModal(onDuplicateContinue);
             return false;
         }
 
@@ -1771,23 +1950,100 @@
     bindStatusConfirmSaveThenChange();
 
     if (confirmOrderBtn) confirmOrderBtn.addEventListener('click', () => {
-        if (!prepareSubmit('confirm', '', '')) {
+        if (isCreateBankTransferSelected()) {
+            const proceedBankTransferRequest = () => {
+                if (!prepareSubmit('send_to_call_center', 'unassigned', '', proceedBankTransferRequest)) {
+                    return;
+                }
+                if (!validateCreateBankTransferFields()) {
+                    return;
+                }
+                openCreateBankTransferModal();
+            };
+            proceedBankTransferRequest();
             return;
         }
-        submitForm();
-    });
 
-    if (sendToCallCenterBtn) sendToCallCenterBtn.addEventListener('click', () => {
-        if (pageBootstrap.isCca) {
-            if (!prepareSubmit('send_to_call_center', 'unassigned', '')) {
+        const proceedConfirmOrder = () => {
+            if (!prepareSubmit('confirm', '', '', proceedConfirmOrder)) {
                 return;
             }
             submitForm();
+        };
+        proceedConfirmOrder();
+    });
+
+    if (sendToCallCenterBtn) sendToCallCenterBtn.addEventListener('click', () => {
+        if (isCreateBankTransferSelected()) {
+            window.alert('Switch to Cash on delivery to send this order to Call Center without a bank transfer submission.');
+            return;
+        }
+
+        if (pageBootstrap.isCca) {
+            const proceedCcaSend = () => {
+                if (!prepareSubmit('send_to_call_center', 'unassigned', '', proceedCcaSend)) {
+                    return;
+                }
+                submitForm();
+            };
+            proceedCcaSend();
             return;
         }
 
         openCallCenterAssignModal();
     });
+
+    if (confirmBankTransferApprovalBtn && !isEditMode) {
+        confirmBankTransferApprovalBtn.addEventListener('click', () => {
+            closeCreateBankTransferModal();
+            const proceedBankTransferSubmit = () => {
+                if (!prepareSubmit('send_to_call_center', 'unassigned', '', proceedBankTransferSubmit)) {
+                    return;
+                }
+                if (!validateCreateBankTransferFields()) {
+                    return;
+                }
+                submitForm();
+            };
+            proceedBankTransferSubmit();
+        });
+    }
+
+    if (!isEditMode) {
+        document.querySelectorAll('[data-close-modal="bankTransferConfirmModal"]').forEach((btn) => {
+            btn.addEventListener('click', closeCreateBankTransferModal);
+        });
+        if (createBankTransferModal) {
+            createBankTransferModal.addEventListener('click', (event) => {
+                if (event.target === createBankTransferModal) {
+                    closeCreateBankTransferModal();
+                }
+            });
+        }
+
+        document.querySelectorAll('[data-close-modal="duplicateOrderConfirmModal"]').forEach((btn) => {
+            btn.addEventListener('click', () => closeDuplicateOrderConfirmModal(true));
+        });
+        if (confirmDuplicateOrderContinueBtn) {
+            confirmDuplicateOrderContinueBtn.addEventListener('click', acceptDuplicateOrderConfirm);
+        }
+        if (duplicateOrderConfirmModal) {
+            duplicateOrderConfirmModal.addEventListener('click', (event) => {
+                if (event.target === duplicateOrderConfirmModal) {
+                    closeDuplicateOrderConfirmModal(true);
+                }
+            });
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            if (!duplicateOrderConfirmModal || duplicateOrderConfirmModal.classList.contains('hidden')) {
+                return;
+            }
+            closeDuplicateOrderConfirmModal(true);
+        });
+    }
 
     if (closeCallCenterAssignModal) closeCallCenterAssignModal.addEventListener('click', closeCallCenterModal);
     if (confirmSendToCallCenterBtn) confirmSendToCallCenterBtn.addEventListener('click', () => {
@@ -1800,12 +2056,15 @@
             return;
         }
 
-        if (!prepareSubmit('send_to_call_center', target, assignCcaId)) {
-            return;
-        }
+        const proceedSendToCallCenter = () => {
+            if (!prepareSubmit('send_to_call_center', target, assignCcaId, proceedSendToCallCenter)) {
+                return;
+            }
 
-        closeCallCenterModal();
-        submitForm();
+            closeCallCenterModal();
+            submitForm();
+        };
+        proceedSendToCallCenter();
     });
 
     const openBanUserBtn = document.getElementById('openBanUserBtn');
@@ -1906,13 +2165,10 @@
 
         document.querySelectorAll('[data-create-payment-method]').forEach((input) => {
             input.addEventListener('change', () => {
-                const bankHint = document.getElementById('createBankTransferHint');
-                const codHint = document.getElementById('createCodPaymentHint');
-                const isBank = input.value === 'bank' && input.checked;
-                if (bankHint) bankHint.classList.toggle('hidden', !isBank);
-                if (codHint) codHint.classList.toggle('hidden', isBank);
+                syncCreatePaymentMethodUi();
             });
         });
+        syncCreatePaymentMethodUi();
 
         timelineReady = true;
     }
