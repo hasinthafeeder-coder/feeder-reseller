@@ -374,18 +374,38 @@ class ResellerCallCenterOrdersTest extends TestCase
         $this->attachOrderLineAndAddress($order, $variant);
         app(OrderCcaAssignmentService::class)->assign($order, (int) $cca->id, (int) $owner->id);
 
-        $this->actingAs($cca)
+        $show = $this->actingAs($cca)
             ->get(route('orders.show', $order))
             ->assertOk()
             ->assertSee('CC-DETAIL-1')
             ->assertSee('Call Center Customer')
             ->assertSee('0701122334')
             ->assertSee('id="manualOrderForm"', false)
+            ->assertSee('id="whatsappOrderBtn"', false)
+            ->assertSee('https://wa.me/', false)
+            ->assertSee('toWhatsAppPhone', false)
             ->assertDontSee('id="saveOrderChangesBtn"', false)
             ->assertSee('id="orderStatusActionsCard"', false)
             ->assertSee('order-status-actions-footer', false)
             ->assertSee('name="customer_name"', false)
             ->assertDontSee('Update discount');
+
+        $html = $show->getContent();
+        $confirmation = 'Hello! We have received your order. Would you like to confirm this order so we can proceed?';
+        $this->assertStringContainsString($confirmation, $html);
+        $this->assertStringContainsString('Order Details:', $html);
+        $this->assertStringContainsString("'Selling Price: ' + sellingPrices", $html);
+        $this->assertStringContainsString('whatsappSellingPrice', $html);
+        $this->assertStringContainsString('.line-selected-price', $html);
+        $this->assertLessThan(
+            strpos($html, 'Order Details:'),
+            strpos($html, $confirmation),
+            'WhatsApp confirmation text must appear before Order Details in the message builder.'
+        );
+        $this->assertStringNotContainsString(
+            "'Selling Price: ' + (money(min) + ' – ' + money(max))",
+            $html
+        );
     }
 
     public function test_cca_can_update_assigned_order_via_create_form_fields(): void

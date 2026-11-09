@@ -468,6 +468,26 @@
             border-radius: 4px;
         }
 
+        .order-create-prototype .whatsapp-phone-group .whatsapp-order-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.75rem;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+
+        .order-create-prototype .whatsapp-phone-group .whatsapp-order-btn i {
+            font-size: 1.15rem;
+            line-height: 1;
+        }
+
+        @media (max-width: 575.98px) {
+            .order-create-prototype .whatsapp-phone-group {
+                flex-wrap: nowrap;
+            }
+        }
+
         .order-create-prototype .bg-success-subtle { background: #d1e7dd; color: #0f5132; }
         .order-create-prototype .text-success { color: #198754; }
         .order-create-prototype .bg-warning-subtle { background: #fff3cd; color: #664d03; }

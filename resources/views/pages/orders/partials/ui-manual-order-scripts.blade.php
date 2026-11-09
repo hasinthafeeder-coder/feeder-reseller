@@ -106,6 +106,153 @@
         return String(value || '').replace(/\D/g, '');
     }
 
+    /**
+     * WhatsApp click-to-chat expects international digits only.
+     * Supports Sri Lankan local (0XXXXXXXXX) and already-international (94XXXXXXXXX) forms.
+     * Returns null when the number is missing, ambiguous, or unsupported.
+     */
+    function toWhatsAppPhone(value) {
+        const digits = normalizePhone(value);
+
+        if (!digits) {
+            return null;
+        }
+
+        if (/^94[1-9]\d{8}$/.test(digits)) {
+            return digits;
+        }
+
+        if (/^0[1-9]\d{8}$/.test(digits)) {
+            return '94' + digits.slice(1);
+        }
+
+        return null;
+    }
+
+    function whatsappVariantName(variantSelect) {
+        const option = variantSelect?.selectedOptions?.[0];
+        if (!option || !option.value) {
+            return '';
+        }
+
+        // Variant option labels may append " — LKR x.xx" or a suggested range; keep the name only.
+        const label = String(option.text || '').trim();
+        if (!label || label === 'Select variant') {
+            return '';
+        }
+
+        const separatorIndex = label.indexOf(' — ');
+        return separatorIndex >= 0 ? label.slice(0, separatorIndex).trim() : label;
+    }
+
+    /**
+     * Actual order-line selling price (unit_selling_price / selected_selling_price).
+     * Never use the suggested min–max range shown in .line-selling-price.
+     */
+    function whatsappSellingPrice(row) {
+        const selectedPriceInput = row.querySelector('.line-selected-price');
+        if (selectedPriceInput && !selectedPriceInput.disabled && selectedPriceInput.value !== '') {
+            return money(Number(selectedPriceInput.value));
+        }
+
+        const priceInput = row.querySelector('.line-price');
+        if (priceInput && priceInput.value !== '') {
+            return money(Number(priceInput.value));
+        }
+
+        const variantSelect = row.querySelector('.line-variant');
+        const option = variantSelect?.options[variantSelect.selectedIndex];
+        if (option?.dataset?.customerUnitPrice) {
+            return money(Number(option.dataset.customerUnitPrice));
+        }
+        if (option?.dataset?.sellingPrice) {
+            return money(Number(option.dataset.sellingPrice));
+        }
+
+        return '—';
+    }
+
+    function collectWhatsAppOrderItems() {
+        if (!linesContainer) {
+            return [];
+        }
+
+        const items = [];
+
+        linesContainer.querySelectorAll('.order-line-row').forEach((row) => {
+            const product = String(row.querySelector('.line-product-search')?.value || '').trim();
+            const variantSelect = row.querySelector('.line-variant');
+            const variantValue = String(variantSelect?.value || '').trim();
+            const variantName = whatsappVariantName(variantSelect);
+            const quantity = String(row.querySelector('.line-qty')?.value || '').trim();
+
+            if (!product && !variantValue) {
+                return;
+            }
+
+            let name = product;
+            if (variantName) {
+                name = product ? (product + ' / ' + variantName) : variantName;
+            }
+
+            items.push({
+                name: name || '—',
+                quantity: quantity !== '' ? quantity : '—',
+                sellingPrice: whatsappSellingPrice(row),
+            });
+        });
+
+        return items;
+    }
+
+    function buildWhatsAppOrderMessage(phoneDisplay) {
+        const items = collectWhatsAppOrderItems();
+        const itemNames = items.map((item) => item.name).join('; ') || '—';
+        const quantities = items.map((item) => item.quantity).join('; ') || '—';
+        const sellingPrices = items.map((item) => item.sellingPrice).join('; ') || '—';
+
+        return [
+            'Hello! We have received your order. Would you like to confirm this order so we can proceed?',
+            '',
+            'ආයුබෝවන්! ඔබගේ ඇණවුම අපට ලැබී ඇත. මෙම ඇණවුම තහවුරු කර ඉදිරියට ගෙන යාමට ඔබ කැමතිද?',
+            '',
+            'வணக்கம்! உங்கள் ஆர்டர் எங்களுக்குக் கிடைத்துள்ளது. இந்த ஆர்டரை உறுதிப்படுத்தி தொடர்ந்து செயல்படுத்த விரும்புகிறீர்களா?',
+            '',
+            'Order Details:',
+            'Order Item: ' + itemNames,
+            'Customer No: ' + phoneDisplay,
+            'Order Quantity: ' + quantities,
+            'Selling Price: ' + sellingPrices,
+        ].join('\n');
+    }
+
+    function openWhatsAppForOrder() {
+        if (!primaryPhone) {
+            return;
+        }
+
+        const phoneDisplay = String(primaryPhone.value || '').trim();
+
+        if (!phoneDisplay) {
+            window.alert('Phone 1 is required to open WhatsApp.');
+            primaryPhone.focus();
+            return;
+        }
+
+        const whatsappPhone = toWhatsAppPhone(phoneDisplay);
+
+        if (!whatsappPhone) {
+            window.alert('Please enter a valid phone number for Sri Lanka.');
+            primaryPhone.focus();
+            return;
+        }
+
+        const url = 'https://wa.me/' + whatsappPhone
+            + '?text=' + encodeURIComponent(buildWhatsAppOrderMessage(phoneDisplay));
+
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
     function money(amount, code) {
         const prefix = (code || currencyCode || '');
         return (prefix ? prefix + ' ' : '')
@@ -1799,6 +1946,11 @@
         }, 350);
         updateOrderReview();
     });
+
+    const whatsappOrderBtn = document.getElementById('whatsappOrderBtn');
+    if (whatsappOrderBtn) {
+        whatsappOrderBtn.addEventListener('click', openWhatsAppForOrder);
+    }
 
     [customerName, addressLine1].forEach((el) => {
         el.addEventListener('input', () => {

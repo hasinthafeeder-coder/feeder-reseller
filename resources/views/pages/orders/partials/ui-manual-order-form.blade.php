@@ -41,8 +41,22 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="label fs-14 mb-2" for="primaryPhone">Phone 1</label>
-                                    <input type="text" class="form-control" id="primaryPhone" name="primary_phone"
-                                        value="{{ $fd('primary_phone', '') }}" autocomplete="off">
+                                    @if ($isEditMode)
+                                        <div class="input-group whatsapp-phone-group">
+                                            <input type="text" class="form-control" id="primaryPhone" name="primary_phone"
+                                                value="{{ $fd('primary_phone', '') }}" autocomplete="off">
+                                            <button type="button"
+                                                class="btn btn-outline-success whatsapp-order-btn"
+                                                id="whatsappOrderBtn"
+                                                title="Open WhatsApp"
+                                                aria-label="Open WhatsApp with order confirmation message">
+                                                <i class="ri-whatsapp-line" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    @else
+                                        <input type="text" class="form-control" id="primaryPhone" name="primary_phone"
+                                            value="{{ $fd('primary_phone', '') }}" autocomplete="off">
+                                    @endif
                                 </div>
                                 <div class="col-md-6">
                                     <label class="label fs-14 mb-2" for="secondaryPhone">Phone 2</label>
