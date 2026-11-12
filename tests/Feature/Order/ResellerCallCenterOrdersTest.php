@@ -458,6 +458,46 @@ class ResellerCallCenterOrdersTest extends TestCase
         $this->assertSame('10.00', $fresh->discount_amount);
     }
 
+    public function test_cca_update_rejects_address_with_more_than_five_digits(): void
+    {
+        $owner = $this->makeResellerWithPermission(['orders.view', 'orders.cca.assign', 'orders.update']);
+        $cca = $this->makeCca($owner->company, ['orders.view', 'orders.update']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($owner, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $order = $this->makeOrder($owner, $supplier, $variant, [
+            'order_number' => 'CC-EDIT-DIGITS',
+            'customer_name_snapshot' => 'Before Name',
+            'primary_phone_snapshot' => '0701000002',
+        ]);
+        $this->attachOrderLineAndAddress($order, $variant);
+        app(OrderCcaAssignmentService::class)->assign($order, (int) $cca->id, (int) $owner->id);
+
+        $this->actingAs($cca)
+            ->from(route('orders.show', $order))
+            ->post(route('orders.update', $order), [
+                'market_id' => $order->market_id,
+                'supplier_id' => $order->supplier_id,
+                'customer_name' => 'After Name',
+                'primary_phone' => '0701999888',
+                'address_line1' => 'House 98/76/54 Lane',
+                'city_name' => 'Colombo',
+                'district_name' => 'Colombo',
+                'items' => [
+                    [
+                        'product_variant_id' => $variant->id,
+                        'quantity' => 1,
+                        'selected_selling_price' => 250,
+                    ],
+                ],
+                'discount_amount' => 0,
+            ])
+            ->assertRedirect(route('orders.show', $order))
+            ->assertSessionHasErrors(['address_line1']);
+
+        $this->assertSame('Before Name', $order->fresh()->customer_name_snapshot);
+    }
+
     public function test_cca_cannot_update_another_agents_order(): void
     {
         $owner = $this->makeResellerWithPermission(['orders.view', 'orders.cca.assign', 'orders.update']);

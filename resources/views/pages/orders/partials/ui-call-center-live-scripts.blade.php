@@ -285,14 +285,17 @@
         }
 
         function actionsCellHtml(order) {
-            var viewBtn = '<a href="' + escapeHtml(order.showUrl) + '" class="btn btn-sm btn-light border">View</a>';
+            var viewBtn = '<a href="' + escapeHtml(order.showUrl) + '" ' +
+                'class="bg-transparent p-0 border-0 text-decoration-none" ' +
+                'title="View Order" aria-label="View Order">' +
+                '<i class="material-symbols-outlined fs-16 fw-normal text-primary">visibility</i></a>';
             if (isCca() && actor.can_claim && activeTab === 'pool' && order.assignment === 'pool') {
                 var locked = !canTakeFromPool();
-                return '<div class="d-flex flex-column gap-1 align-items-stretch">' +
+                return '<div class="d-flex flex-column gap-2 align-items-center">' +
                     '<button type="button" class="btn btn-primary btn-sm text-white" data-claim-order="' + order.id + '"' + (locked ? ' disabled' : '') + '>Assign to Me</button>' +
                     viewBtn + '</div>';
             }
-            return viewBtn;
+            return '<div class="d-flex justify-content-center" style="gap: 12px;">' + viewBtn + '</div>';
         }
 
         function renderPoolLockBanner() {
@@ -374,9 +377,9 @@
                 ? '<th class="order-ui-select-col"><input type="checkbox" id="orderUiSelectAll" class="form-check-input" aria-label="Select all on page"></th>'
                 : '';
 
-                content.innerHTML = '<div class="table-responsive"><table class="orders-table align-middle"><thead><tr>' +
+                content.innerHTML = '<div class="table-responsive"><table class="table align-middle orders-table"><thead><tr>' +
                 selectHeader +
-                '<th>Order</th><th>Customer</th><th>Items / Amount</th><th>CCA</th><th>Supplier</th><th>Courier</th><th>Status</th><th>Created</th><th>Actions</th>' +
+                '<th>Order</th><th>Customer</th><th>Items / Amount</th><th>CCA</th><th>Supplier</th><th>Courier</th><th>Status</th><th>Created</th><th class="text-center">Action</th>' +
                 '</tr></thead><tbody>' + orders.map(function (order) {
                     // Selectable whenever the actor can bulk-assign; backend still rejects invalid states
                     // (already-assigned / already-in-pool) with a clear error.
@@ -406,7 +409,7 @@
                             : '<span class="order-sub">\u2014</span>') + '</td>' +
                         '<td><span class="badge-status is-' + escapeHtml(statusCssClass(order.status)) + '">' + escapeHtml(order.statusLabel || order.status) + '</span></td>' +
                         '<td><div class="order-sub">' + formatDate(order.createdAt) + '</div></td>' +
-                        '<td>' + actionsCellHtml(order) + '</td>' +
+                        '<td class="text-center">' + actionsCellHtml(order) + '</td>' +
                         '</tr>';
                 }).join('') + '</tbody></table></div>' + renderPagination();
 

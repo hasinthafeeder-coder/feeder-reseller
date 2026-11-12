@@ -66,9 +66,9 @@
                 <span class="order-ui-import-state is-created">Created</span>
             </div>
         </div>
-        <div class="p-20">
+        <div>
             <div class="table-responsive">
-                <table class="orders-table align-middle">
+                <table class="table align-middle orders-table">
                     <thead>
                         <tr>
                             <th>Row</th>
@@ -89,7 +89,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="d-flex flex-column flex-sm-row justify-content-sm-end gap-2 mt-3">
+            <div class="p-20 border-top d-flex flex-column flex-sm-row justify-content-sm-end gap-2">
                 <button type="button" class="btn btn-light border" id="orderImportClearBtn">Clear file</button>
                 <button type="button" class="btn btn-primary text-white" id="orderImportSubmitBtn">Import orders</button>
             </div>
@@ -114,13 +114,15 @@
                     Create orders first, then assign selected rows, send them to the pool, or assign a random quantity of unassigned company orders.
                 </div>
             </div>
-            <div class="p-20">
-                <div class="table-responsive mb-3">
-                    <table class="orders-table align-middle">
+            <div>
+                <div class="table-responsive">
+                    <table class="table align-middle orders-table">
                         <thead>
                             <tr>
-                                <th style="width: 2.5rem;">
-                                    <input type="checkbox" class="form-check-input" id="orderImportAssignSelectAll" disabled>
+                                <th class="order-ui-select-col">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="orderImportAssignSelectAll" disabled aria-label="Select all">
+                                    </div>
                                 </th>
                                 <th>Order</th>
                                 <th>Customer</th>
@@ -138,20 +140,22 @@
                     </table>
                 </div>
 
-                <div class="row g-3 align-items-end">
-                    <div class="col-lg-3 col-md-4">
-                        <label class="label fs-14 mb-2" for="orderImportAssignCca">Select CCA</label>
-                        <select id="orderImportAssignCca" class="form-select form-control">
-                            <option value="">Choose CCA</option>
-                        </select>
-                    </div>
-                    <div class="col-lg-9 col-md-8">
-                        <div class="d-flex flex-wrap align-items-center gap-2">
-                            <button type="button" class="btn btn-primary text-white" id="orderImportAssignSelectedBtn">Assign selected</button>
-                            <button type="button" class="btn btn-outline-primary" id="orderImportPoolSelectedBtn">Send selected to pool</button>
-                            <button type="button" class="btn btn-light border" id="orderImportAssignRandomBtn">Assign random quantity</button>
+                <div class="p-20 border-top">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-lg-3 col-md-4">
+                            <label class="label fs-14 mb-2" for="orderImportAssignCca">Select CCA</label>
+                            <select id="orderImportAssignCca" class="form-select form-control">
+                                <option value="">Choose CCA</option>
+                            </select>
                         </div>
-                        <div class="fs-13 text-body mt-2 mb-0" id="orderImportUnassignedHint"></div>
+                        <div class="col-lg-9 col-md-8">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <button type="button" class="btn btn-primary text-white" id="orderImportAssignSelectedBtn">Assign selected</button>
+                                <button type="button" class="btn btn-outline-primary" id="orderImportPoolSelectedBtn">Send selected to pool</button>
+                                <button type="button" class="btn btn-light border" id="orderImportAssignRandomBtn">Assign random quantity</button>
+                            </div>
+                            <div class="fs-13 text-body mt-2 mb-0" id="orderImportUnassignedHint"></div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -50,6 +50,9 @@
         'market' => $marketCountry,
         'member_since' => optional($supplierCompany?->created_at)->format('M Y') ?? '—',
     ];
+    $youtubeEmbedUrl = $product?->youtubeEmbedUrl();
+    $hasWarranty = (bool) ($product?->hasWarranty());
+    $warrantyPeriod = $hasWarranty ? trim((string) $product?->warranty_period) : null;
 @endphp
 
 @section('content')
@@ -293,6 +296,29 @@
                 @empty
                     <p class="fs-16 lh-1-8 text-body mb-0 text-muted">No description available.</p>
                 @endforelse
+
+                @if ($youtubeEmbedUrl)
+                    <div class="mt-4">
+                        <h5 class="mb-3">Product Video</h5>
+                        <div class="ratio ratio-16x9 rounded-10 overflow-hidden bg-dark">
+                            <iframe
+                                src="{{ $youtubeEmbedUrl }}"
+                                title="{{ $productName }} video"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                allowfullscreen
+                                loading="lazy"
+                                referrerpolicy="strict-origin-when-cross-origin"
+                            ></iframe>
+                        </div>
+                    </div>
+                @endif
+
+                @if ($hasWarranty && $warrantyPeriod)
+                    <div class="mt-4">
+                        <h5 class="mb-2">Warranty</h5>
+                        <p class="fs-16 lh-1-8 text-body mb-0">Warranty period: {{ $warrantyPeriod }}</p>
+                    </div>
+                @endif
             </div>
         </div>
 

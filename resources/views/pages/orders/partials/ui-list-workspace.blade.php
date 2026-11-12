@@ -133,7 +133,7 @@
             </div>
             <div class="results-meta" id="orderUiUserContextMeta"></div>
         </div>
-        <div class="p-20" id="orderUiWorkspaceContent"></div>
+        <div id="orderUiWorkspaceContent"></div>
     </div>
 </div>
 

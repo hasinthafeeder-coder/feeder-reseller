@@ -220,9 +220,11 @@
             var stock = row.existing_stock != null ? row.existing_stock : '—';
 
             return '<tr>'
-                + '<td><input type="checkbox" class="form-check-input" data-import-assign-order="'
-                + importEscape(row.created_order_id) + '"></td>'
-                + '<td>' + importEscape(row.order_number || ('#' + row.created_order_id)) + '</td>'
+                + '<td class="order-ui-select-col"><div class="form-check">'
+                + '<input type="checkbox" class="form-check-input" data-import-assign-order="'
+                + importEscape(row.created_order_id) + '" aria-label="Select order">'
+                + '</div></td>'
+                + '<td><div class="order-number">' + importEscape(row.order_number || ('#' + row.created_order_id)) + '</div></td>'
                 + '<td>' + importEscape(row.name || '—') + '</td>'
                 + '<td><div>' + importEscape(row.tp_1 || '—') + '</div>'
                 + '<div class="order-sub">' + importEscape(row.tp_2 || 'No secondary') + '</div></td>'
@@ -1052,25 +1054,24 @@
             }
 
             var selectHeader = isCallCenter
-                ? '<th class="order-ui-select-col"><input type="checkbox" id="orderUiSelectAll" class="form-check-input" aria-label="Select all on page"></th>'
+                ? '<th class="order-ui-select-col"><div class="form-check"><input type="checkbox" id="orderUiSelectAll" class="form-check-input" aria-label="Select all on page"></div></th>'
                 : '';
 
-            content.innerHTML = '<div class="table-responsive"><table class="orders-table align-middle"><thead><tr>' +
+            content.innerHTML = '<div class="table-responsive"><table class="table align-middle orders-table"><thead><tr>' +
                 selectHeader +
-                '<th>Order</th><th>Customer</th><th>Items / Amount</th><th>CCA</th><th>Supplier</th><th>Courier</th><th>Status</th><th>Created</th><th>Actions</th>' +
+                '<th>Order</th><th>Customer</th><th>Items / Amount</th><th>CCA</th><th>Supplier</th><th>Courier</th><th>Status</th><th>Created</th><th class="text-center">Action</th>' +
                 '</tr></thead><tbody>' + page.rows.map(function (order) {
                     var selectable = isSelectable(order);
                     var selectCell = '';
                     if (isCallCenter) {
                         selectCell = '<td class="order-ui-select-col">' +
                             (selectable
-                                ? '<input type="checkbox" class="form-check-input" data-ui-order-select="' + order.id + '" aria-label="Select order ' + escapeHtml(order.orderNumber) + '">'
+                                ? '<div class="form-check"><input type="checkbox" class="form-check-input" data-ui-order-select="' + order.id + '" aria-label="Select order ' + escapeHtml(order.orderNumber) + '"></div>'
                                 : '<span class="order-ui-select-disabled" title="Global orders cannot be assigned from this view">—</span>') +
                             '</td>';
                     }
 
-                    var actionLabel = order.isGlobal ? 'View details' : 'View';
-                    var actionClass = order.isGlobal ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-light border';
+                    var actionTitle = order.isGlobal ? 'View details' : 'View Order';
                     var rowClass = order.isGlobal ? ' is-global-order' : '';
 
                     return '<tr class="' + rowClass.trim() + '" data-order-id="' + order.id + '">' +
@@ -1090,7 +1091,10 @@
                             : '<span class="order-sub">—</span>') + '</td>' +
                         '<td><span class="badge-status is-' + escapeHtml(order.status) + '">' + escapeHtml(order.statusLabel) + '</span></td>' +
                         '<td><div class="order-sub">' + formatDate(order.createdAt) + '</div></td>' +
-                        '<td><a href="' + escapeHtml(viewUrl(order)) + '" class="' + actionClass + '">' + actionLabel + '</a></td>' +
+                        '<td class="text-center"><div class="d-flex justify-content-center" style="gap: 12px;">' +
+                        '<a href="' + escapeHtml(viewUrl(order)) + '" class="bg-transparent p-0 border-0 text-decoration-none" title="' + escapeHtml(actionTitle) + '">' +
+                        '<i class="material-symbols-outlined fs-16 fw-normal text-primary">visibility</i></a>' +
+                        '</div></td>' +
                         '</tr>';
                 }).join('') + '</tbody></table></div>' + renderPagination(page);
 

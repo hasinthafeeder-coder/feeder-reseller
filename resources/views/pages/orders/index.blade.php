@@ -247,25 +247,47 @@
             font-weight: 650;
             text-transform: uppercase;
             letter-spacing: 0.03em;
-            color: #64748b;
+            color: #475569;
             white-space: nowrap;
             border-bottom: 1px solid rgba(15, 23, 42, 0.08);
             padding: 0.7rem 0.65rem;
-            background: #fafbfc;
+            background-color: #fde5e0;
         }
 
         .orders-list-prototype .orders-table tbody td {
             padding: 0.8rem 0.65rem;
             vertical-align: top;
             border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            background-color: #fff;
         }
 
-        .orders-list-prototype .orders-table tbody tr:hover {
-            background: #f8fafc;
+        .orders-list-prototype .orders-table tbody tr:hover td {
+            background-color: #f8fafc;
         }
 
-        .orders-list-prototype .orders-table tbody tr.is-selected {
-            background: rgba(239, 73, 35, 0.06);
+        .orders-list-prototype .orders-table tbody tr.is-selected td {
+            background-color: rgba(239, 73, 35, 0.06);
+        }
+
+        .orders-list-prototype .orders-table tbody tr.is-global-order td {
+            background-color: #f8fafc;
+        }
+
+        .orders-list-prototype .order-action-link {
+            color: #ef4923;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+            text-decoration: none;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .orders-list-prototype .order-action-link:hover,
+        .orders-list-prototype .order-action-link:focus-visible {
+            color: #c53716;
+            font-weight: 700;
+            text-decoration: underline;
         }
 
         .orders-list-prototype .order-number {
@@ -361,8 +383,8 @@
             align-items: center;
             justify-content: space-between;
             gap: 0.75rem;
-            margin-top: 1rem;
-            padding-top: 0.85rem;
+            margin-top: 0;
+            padding: 1.25rem;
             border-top: 1px solid rgba(15, 23, 42, 0.08);
         }
 

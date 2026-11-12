@@ -149,15 +149,28 @@
                         @elseif ($item->getRoute() && Route::has($item->getRoute()))
                             @php
                                 $isActive = request()->routeIs($item->getRoute());
+                                $badge = $item->getBadge(auth()->user());
+                                $liveBadgeKey = match ($item->getTitle()) {
+                                    'Notifications' => 'notifications',
+                                    'Meetings' => 'meetings',
+                                    default => null,
+                                };
                             @endphp
                             <li class="menu-item {{ $isActive ? 'active' : '' }}">
                                 <a href="{{ route($item->getRoute()) }}"
-                                    class="menu-link {{ $isActive ? 'active' : '' }}">
+                                    class="menu-link {{ $isActive ? 'active' : '' }}"
+                                    @if ($liveBadgeKey) data-notification-live-menu="{{ $liveBadgeKey }}" @endif>
                                     @if ($item->getIcon())
                                         <span class="material-symbols-outlined menu-icon">{{ $item->getIcon() }}</span>
                                     @endif
 
                                     <span class="title">{{ $item->getTitle() }}</span>
+
+                                    <span class="count"
+                                        @if ($liveBadgeKey) data-notification-live-badge="{{ $liveBadgeKey }}" @endif
+                                        @if ($badge === null) hidden style="display:none;" @endif>
+                                        {{ $badge ?? '' }}
+                                    </span>
                                 </a>
                             </li>
                         @endif
@@ -420,81 +433,7 @@
                                         </div>
                                     </div>
                                 </li>
-                                <li class="header-right-item">
-                                    <div class="dropdown notifications noti">
-                                        <button class="btn btn-secondary border-0 p-0 position-relative"
-                                            type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                            <span class="material-symbols-outlined">notifications</span>
-                                            <span class="count">3</span>
-                                        </button>
-                                        <div class="dropdown-menu dropdown-lg p-0 border-0 p-0 dropdown-menu-end">
-                                            <div class="d-flex justify-content-between align-items-center title">
-                                                <span class="fw-medium fs-16 text-secondary">Notifications
-                                                    <span class="fw-normal text-body fs-16">(03)</span></span>
-                                                <button
-                                                    class="p-0 m-0 bg-transparent border-0 fs-15 text-primary fw-medium">
-                                                    Clear All
-                                                </button>
-                                            </div>
-
-                                            <div style="max-height: 300px" data-simplebar>
-                                                <div class="notification-menu unseen">
-                                                    <a href="notifications.html" class="dropdown-item">
-                                                        <div class="d-flex align-items-center">
-                                                            <div class="flex-shrink-0">
-                                                                <i
-                                                                    class="material-symbols-outlined text-primary">sms</i>
-                                                            </div>
-                                                            <div class="flex-grow-1 ms-3">
-                                                                <p class="fs-16 fw-medium text-secondary">
-                                                                    You have requested to withdrawal
-                                                                </p>
-                                                                <span class="fs-14 fw-medium">2 hrs ago</span>
-                                                            </div>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                                <div class="notification-menu unseen">
-                                                    <a href="notifications.html" class="dropdown-item">
-                                                        <div class="d-flex align-items-center">
-                                                            <div class="flex-shrink-0">
-                                                                <i
-                                                                    class="material-symbols-outlined text-info">person</i>
-                                                            </div>
-                                                            <div class="flex-grow-1 ms-3">
-                                                                <p class="fs-16 fw-medium text-secondary">
-                                                                    A new user added in Fila
-                                                                </p>
-                                                                <span class="fs-14 fw-medium">3 hrs ago</span>
-                                                            </div>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                                <div class="notification-menu">
-                                                    <a href="notifications.html" class="dropdown-item">
-                                                        <div class="d-flex align-items-center">
-                                                            <div class="flex-shrink-0">
-                                                                <i
-                                                                    class="material-symbols-outlined text-success">mark_email_unread</i>
-                                                            </div>
-                                                            <div class="flex-grow-1 ms-3">
-                                                                <p class="fs-16 fw-medium text-secondary">
-                                                                    You have requested to withdrawal
-                                                                </p>
-                                                                <span class="fs-14 fw-medium">1 day ago</span>
-                                                            </div>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            </div>
-
-                                            <a href="notifications.html"
-                                                class="dropdown-item text-center text-primary d-block view-all fw-medium rounded-bottom-3">
-                                                <span>See All Notifications </span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </li>
+                                @include('partials.header-notifications')
                                 <li class="header-right-item">
                                     <div class="dropdown admin-profile">
                                         <div class="d-xxl-flex align-items-center bg-transparent border-0 text-start p-0 cursor dropdown-toggle"
@@ -734,6 +673,7 @@
     <script src="{{ asset('assets/js/custom/echarts.js') }}"></script>
     <script src="{{ asset('assets/js/custom/maps.js') }}"></script>
     <script src="{{ asset('assets/js/custom/custom.js') }}"></script>
+    @include('partials.notification-live')
     @stack('scripts')
 </body>
 

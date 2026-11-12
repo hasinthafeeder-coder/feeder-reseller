@@ -302,10 +302,13 @@
                 '<td>' + outcomeBadge(order.outcome) + '</td>' +
                 '<td>' + settlementCell(order) + '</td>' +
                 '<td>' + escapeHtml(order.completed_at || '—') + '</td>' +
-                '<td class="text-end">' +
-                '<button type="button" class="btn btn-sm btn-light border order-view-btn" ' +
-                'data-order-number="' + escapeHtml(order.order_number || '') + '">View</button>' +
-                '</td></tr>';
+                '<td class="text-center">' +
+                '<div class="d-flex justify-content-center" style="gap: 12px;">' +
+                '<button type="button" class="bg-transparent p-0 border-0 order-view-btn" ' +
+                'data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="View Order" ' +
+                'data-order-number="' + escapeHtml(order.order_number || '') + '">' +
+                '<i class="material-symbols-outlined fs-16 fw-normal text-primary">visibility</i></button>' +
+                '</div></td></tr>';
         }).join('');
     }
 

@@ -176,7 +176,7 @@
             </div>
         </div>
 
-        <div class="p-20">
+        <div>
             <div class="table-responsive">
                 <table class="table align-middle orders-table" id="completedOrdersTable">
                     <thead>
@@ -191,7 +191,7 @@
                             <th scope="col">Outcome</th>
                             <th scope="col">Settlement</th>
                             <th scope="col">Completed At</th>
-                            <th scope="col" class="text-end">Action</th>
+                            <th scope="col" class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody id="completedOrdersTableBody">

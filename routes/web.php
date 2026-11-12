@@ -1,8 +1,12 @@
 <?php
 
 use App\Http\Controllers\CallCenter\AgentUiController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Finance\FinancialOverviewController;
 use App\Http\Controllers\FileProxyController;
+use App\Http\Controllers\Meeting\MeetingController;
+use App\Http\Controllers\Notification\NotificationController;
+use App\Http\Controllers\Notification\NotificationLiveController;
 use App\Http\Controllers\Product\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Team\TeamTreeController;
@@ -13,9 +17,42 @@ Route::get('/', function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/main/dashboard', function () {
-        return view('pages.main.dashboard');
-    })->name('dashboard');
+    Route::get('/main/dashboard', DashboardController::class)->name('dashboard');
+
+    Route::prefix('notifications')
+        ->name('notifications.')
+        ->middleware('permission:notifications.view')
+        ->group(function () {
+            Route::get('/', [NotificationController::class, 'index'])
+                ->name('index');
+
+            Route::get('/live', NotificationLiveController::class)
+                ->name('live');
+
+            Route::get('/{notification}', [NotificationController::class, 'show'])
+                ->where('notification', '[A-Za-z0-9]+')
+                ->name('show');
+
+            Route::post('/{notification}/read', [NotificationController::class, 'markRead'])
+                ->where('notification', '[A-Za-z0-9]+')
+                ->name('read');
+        });
+
+    Route::prefix('meetings')
+        ->name('meetings.')
+        ->middleware('permission:meetings.view')
+        ->group(function () {
+            Route::get('/', [MeetingController::class, 'index'])
+                ->name('index');
+
+            Route::get('/{meeting}/qr-download', [MeetingController::class, 'downloadQr'])
+                ->where('meeting', '[A-Za-z0-9]+')
+                ->name('qr.download');
+
+            Route::get('/{meeting}', [MeetingController::class, 'show'])
+                ->where('meeting', '[A-Za-z0-9]+')
+                ->name('show');
+        });
 
     Route::prefix('team-structure')
         ->middleware('permission:team.structure.view')

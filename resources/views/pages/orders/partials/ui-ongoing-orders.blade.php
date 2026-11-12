@@ -169,7 +169,7 @@
             </div>
         </div>
 
-        <div class="p-20">
+        <div>
             <div class="table-responsive">
                 <table class="table align-middle orders-table" id="ongoingOrdersTable">
                     <thead>
@@ -183,7 +183,7 @@
                             <th scope="col">COD Amount</th>
                             <th scope="col">Status</th>
                             <th scope="col">Updated</th>
-                            <th scope="col" class="text-end">Action</th>
+                            <th scope="col" class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody id="ongoingOrdersTableBody">

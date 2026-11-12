@@ -1,46 +1,69 @@
 @extends('layout_main.app')
 
+@php
+    $dashboardBanners = $dashboardBanners ?? ($notificationBanners ?? collect());
+@endphp
+
 @section('content')
     <div class="main-content-container overflow-hidden">
-        <div class="row">
-            <div class="col-12">
-                <div id="carouselExampleControlsNoTouching" class="carousel slide mb-4 position-relative"
-                    data-bs-touch="false">
-                    <a href="javascript:void(0);"
-                        class="position-absolute top-0 end-0 d-inline-flex align-items-center justify-content-center rounded-circle text-white text-decoration-none"
-                        style="width: 30px; height: 30px; background-color: #EF4923; margin: 12px; z-index: 3;"
-                        aria-label="Close banner">
-                        <i class="material-symbols-outlined fs-24"
-                            style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24;">close</i>
-                    </a>
-                    <div class="carousel-inner rounded-10">
-                        <div class="carousel-item active" style="height: 170px;">
-                            <img src="{{ asset('assets/images/product-details3.jpg') }}" class="d-block w-100 rounded-10"
-                                alt="product-details" />
-                        </div>
-                        <div class="carousel-item" style="height: 170px;">
-                            <img src="{{ asset('assets/images/product-details4.jpg') }}" class="d-block w-100 rounded-10"
-                                alt="product-details" />
+        <div id="resellerDashboardBannerMount">
+            @if ($dashboardBanners->isNotEmpty())
+                <div class="row">
+                    <div class="col-12">
+                        <div id="resellerNotificationBannerCarousel" class="carousel slide mb-4 position-relative"
+                            data-bs-touch="false" data-bs-ride="carousel">
+                            <a href="javascript:void(0);"
+                                class="position-absolute top-0 end-0 d-inline-flex align-items-center justify-content-center rounded-circle text-white text-decoration-none"
+                                style="width: 30px; height: 30px; background-color: #EF4923; margin: 12px; z-index: 3;"
+                                aria-label="Close banner"
+                                onclick="document.getElementById('resellerNotificationBannerCarousel')?.remove();">
+                                <i class="material-symbols-outlined fs-24"
+                                    style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24;">close</i>
+                            </a>
+                            <div class="carousel-inner rounded-10">
+                                @foreach ($dashboardBanners as $index => $slide)
+                                    @php
+                                        $bannerUuid = $slide['banner_file_uuid'] ?? null;
+                                        $bannerUrl = $slide['url'] ?? '#';
+                                        $bannerTitle = $slide['title'] ?? 'Banner';
+                                    @endphp
+                                    @continue(! $bannerUuid)
+                                    <div class="carousel-item {{ $index === 0 ? 'active' : '' }}" style="height: 170px;">
+                                        <a href="{{ $bannerUrl }}"
+                                            class="d-block h-100 text-decoration-none"
+                                            aria-label="Open {{ $bannerTitle }}">
+                                            <img src="{{ route('files.view', $bannerUuid) }}"
+                                                class="d-block w-100 h-100 rounded-10"
+                                                style="object-fit: cover;"
+                                                alt="{{ $bannerTitle }}" />
+                                        </a>
+                                    </div>
+                                @endforeach
+                            </div>
+                            @if ($dashboardBanners->count() > 1)
+                                <button class="carousel-control-prev" type="button"
+                                    data-bs-target="#resellerNotificationBannerCarousel" data-bs-slide="prev"
+                                    style="background: transparent; opacity: 1; width: 72px;">
+                                    <span class="d-flex align-items-center justify-content-center text-white" aria-hidden="true">
+                                        <i class="material-symbols-outlined fs-40"
+                                            style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 48;">chevron_left</i>
+                                    </span>
+                                    <span class="visually-hidden">Previous</span>
+                                </button>
+                                <button class="carousel-control-next" type="button"
+                                    data-bs-target="#resellerNotificationBannerCarousel" data-bs-slide="next"
+                                    style="background: transparent; opacity: 1; width: 72px;">
+                                    <span class="d-flex align-items-center justify-content-center text-white" aria-hidden="true">
+                                        <i class="material-symbols-outlined fs-40"
+                                            style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 48;">chevron_right</i>
+                                    </span>
+                                    <span class="visually-hidden">Next</span>
+                                </button>
+                            @endif
                         </div>
                     </div>
-                    <button class="carousel-control-prev" type="button" data-bs-target="#carouselExampleControlsNoTouching"
-                        data-bs-slide="prev" style="background: transparent; opacity: 1; width: 72px;">
-                        <span class="d-flex align-items-center justify-content-center text-white" aria-hidden="true">
-                            <i class="material-symbols-outlined fs-40"
-                                style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 48;">chevron_left</i>
-                        </span>
-                        <span class="visually-hidden">Previous</span>
-                    </button>
-                    <button class="carousel-control-next" type="button" data-bs-target="#carouselExampleControlsNoTouching"
-                        data-bs-slide="next" style="background: transparent; opacity: 1; width: 72px;">
-                        <span class="d-flex align-items-center justify-content-center text-white" aria-hidden="true">
-                            <i class="material-symbols-outlined fs-40"
-                                style="font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 48;">chevron_right</i>
-                        </span>
-                        <span class="visually-hidden">Next</span>
-                    </button>
                 </div>
-            </div>
+            @endif
         </div>
 
         {{-- Start Orders Overview --}}

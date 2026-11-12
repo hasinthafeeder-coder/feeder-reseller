@@ -1748,10 +1748,43 @@
         }
     }
 
+    function countDigits(value) {
+        const matches = String(value || '').match(/\d/g);
+        return matches ? matches.length : 0;
+    }
+
+    function validateCustomerNameAndAddressDigits() {
+        const fields = [
+            { el: customerName, label: 'Customer name' },
+            { el: addressLine1, label: 'Address' },
+        ];
+
+        for (let i = 0; i < fields.length; i += 1) {
+            const field = fields[i];
+            if (!field.el) {
+                continue;
+            }
+
+            if (countDigits(field.el.value) > 5) {
+                field.el.setCustomValidity(field.label + ' cannot contain more than 5 digits.');
+                field.el.reportValidity();
+                return false;
+            }
+
+            field.el.setCustomValidity('');
+        }
+
+        return true;
+    }
+
     function prepareSubmit(intent, assignmentTarget, assignCcaId, onDuplicateContinue) {
         orderIntentInput.value = intent;
         assignmentTargetInput.value = assignmentTarget || '';
         assignCcaIdInput.value = assignCcaId || '';
+
+        if (!validateCustomerNameAndAddressDigits()) {
+            return false;
+        }
 
         if (duplicatePanelVisible() && !confirmDuplicateOverride.checked) {
             openDuplicateOrderConfirmModal(onDuplicateContinue);
@@ -1954,6 +1987,13 @@
 
     [customerName, addressLine1].forEach((el) => {
         el.addEventListener('input', () => {
+            if (countDigits(el.value) > 5) {
+                const label = el === customerName ? 'Customer name' : 'Address';
+                el.setCustomValidity(label + ' cannot contain more than 5 digits.');
+            } else {
+                el.setCustomValidity('');
+            }
+
             if (el === addressLine1 && fullAddressText) {
                 fullAddressText.value = addressLine1.value;
             }
@@ -1973,6 +2013,10 @@
     });
 
     function prepareEditSubmit() {
+        if (!validateCustomerNameAndAddressDigits()) {
+            return false;
+        }
+
         if (duplicatePanelVisible() && !confirmDuplicateOverride.checked) {
             window.alert('Please review the duplicate orders and confirm Continue before submitting.');
             return false;

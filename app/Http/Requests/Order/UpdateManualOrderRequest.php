@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Order;
 
+use App\Rules\MaxDigitCount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateManualOrderRequest extends FormRequest
@@ -49,15 +50,15 @@ class UpdateManualOrderRequest extends FormRequest
         return [
             'market_id' => ['required', 'integer'],
             'supplier_id' => ['required', 'integer'],
-            'customer_name' => ['required', 'string', 'max:255'],
+            'customer_name' => ['required', 'string', 'max:255', new MaxDigitCount(5)],
             'primary_phone' => ['required', 'string', 'max:40'],
             'secondary_phone' => ['nullable', 'string', 'max:40'],
-            'address_line1' => ['required', 'string', 'max:255'],
-            'address_line2' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['required', 'string', 'max:255', new MaxDigitCount(5)],
+            'address_line2' => ['nullable', 'string', 'max:255', new MaxDigitCount(5)],
             'city_name' => ['nullable', 'string', 'max:120'],
             'district_name' => ['nullable', 'string', 'max:120'],
             'postal_code' => ['nullable', 'string', 'max:40'],
-            'full_address_text' => ['nullable', 'string', 'max:1000'],
+            'full_address_text' => ['nullable', 'string', 'max:1000', new MaxDigitCount(5)],
             'courier_id' => ['nullable', 'integer', 'min:1'],
             'courier_service_id' => ['nullable', 'integer', 'min:1'],
             'courier_city_id' => ['nullable', 'integer', 'min:1'],

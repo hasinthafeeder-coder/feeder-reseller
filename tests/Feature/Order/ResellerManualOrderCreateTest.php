@@ -945,6 +945,50 @@ class ResellerManualOrderCreateTest extends TestCase
         $this->assertSame('WB-DUP-GUARD-1', $order->fresh('shipment')->shipment?->tracking_number);
     }
 
+    public function test_customer_name_with_more_than_five_digits_is_rejected(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $before = Order::query()->count();
+
+        $this->actingAs($reseller)
+            ->postJson(route('orders.store'), $this->minimalPayload([
+                'supplier_id' => $supplier->id,
+                'customer_name' => 'Customer 123456',
+                'items' => [
+                    ['product_variant_id' => $variant->id, 'quantity' => 1],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['customer_name']);
+
+        $this->assertSame($before, Order::query()->count());
+    }
+
+    public function test_address_with_more_than_five_digits_is_rejected(): void
+    {
+        $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);
+        $supplier = $this->makeSupplierUser();
+        $this->assignSupplier($reseller, $supplier);
+        $variant = $this->makeVariant($supplier);
+        $before = Order::query()->count();
+
+        $this->actingAs($reseller)
+            ->postJson(route('orders.store'), $this->minimalPayload([
+                'supplier_id' => $supplier->id,
+                'address_line1' => 'No 12/34/56 Main Street',
+                'items' => [
+                    ['product_variant_id' => $variant->id, 'quantity' => 1],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['address_line1']);
+
+        $this->assertSame($before, Order::query()->count());
+    }
+
     public function test_same_primary_and_secondary_phone_returns_validation_error(): void
     {
         $reseller = $this->makeResellerWithPermission(['orders.create', 'orders.view']);

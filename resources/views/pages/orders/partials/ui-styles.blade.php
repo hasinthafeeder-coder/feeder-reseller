@@ -574,8 +574,8 @@
         color: #0b5ed7;
     }
 
-    .orders-list-prototype .orders-table tbody tr.is-global-order {
-        background: #f8fafc;
+    .orders-list-prototype .orders-table tbody tr.is-global-order td {
+        background-color: #f8fafc;
     }
 
     .orders-list-prototype .order-ui-select-col {
